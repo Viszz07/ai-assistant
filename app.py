@@ -276,40 +276,31 @@ class LogAnalysisApp:
                         finally:
                             st.session_state.llm_integration = None
 
-                    # Retry helper for deleting files/dirs on Windows
-                    def retry_delete_file(path, attempts=5, delay=0.3):
-                        for i in range(attempts):
-                            try:
-                                if os.path.exists(path):
-                                    os.remove(path)
-                                return True
-                            except PermissionError:
-                                time.sleep(delay)
-                            except OSError:
-                                time.sleep(delay)
-                        return not os.path.exists(path)
-
-                    def retry_delete_dir(path, attempts=5, delay=0.3):
-                        for i in range(attempts):
-                            try:
-                                if os.path.exists(path):
-                                    shutil.rmtree(path, ignore_errors=False)
-                                return True
-                            except Exception:
-                                time.sleep(delay)
-                        return not os.path.exists(path)
-
-                    # Delete SQLite DB with retries
+                    # Delete SQLite DB
                     if os.path.exists(self.db_path):
-                        success_db = retry_delete_file(self.db_path)
-                        if not success_db:
-                            raise RuntimeError(f"Failed to delete database file: {self.db_path}. It may be in use.")
+                        try:
+                            os.remove(self.db_path)
+                        except Exception as e:
+                            st.error(f"Failed to delete SQLite database: {e}")
+                            raise
 
-                    # Delete ChromaDB directory with retries
-                    if os.path.exists("chroma_db"):
-                        success_chroma = retry_delete_dir("chroma_db")
-                        if not success_chroma:
-                            raise RuntimeError("Failed to delete ChromaDB directory. It may be in use.")
+                    # Reset ChromaDB collection (don't delete directory - Windows file lock issue)
+                    # Instead, delete and recreate the collection
+                    try:
+                        import chromadb
+                        client = chromadb.PersistentClient(path="./chroma_db")
+                        try:
+                            client.delete_collection("log_embeddings")
+                        except Exception:
+                            pass  # Collection might not exist
+                        # Recreate empty collection
+                        client.create_collection(
+                            name="log_embeddings",
+                            metadata={"description": "Log message embeddings for semantic search"}
+                        )
+                    except Exception as e:
+                        st.error(f"Failed to reset ChromaDB collection: {e}")
+                        raise
                     # Optionally delete logs
                     if delete_logs and os.path.exists("logs"):
                         shutil.rmtree("logs", ignore_errors=True)
