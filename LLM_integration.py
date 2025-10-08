@@ -221,7 +221,7 @@ class LLMIntegration:
         
         context = "RELEVANT LOG ENTRIES:\n\n"
         
-        for i, log in enumerate(relevant_logs[:10], 1):  # Limit to top 10 for context size
+        for i, log in enumerate(relevant_logs[:30], 1):  # Increased from 10 to 30 for more comprehensive analysis
             metadata = log['metadata']
             context += f"{i}. [{metadata['timestamp']}] {metadata['filename']}:{metadata['line_number']} "
             context += f"[{metadata['severity']}] {log['document']}\n"
@@ -259,6 +259,8 @@ For root cause analysis queries, focus on identifying the primary cause and prov
 For solution requests, provide specific, actionable steps based on the error patterns observed.
 For top errors requests, list and categorize errors with clear prioritization.
 
+When analyzing logs, consider patterns across different error types, frequencies, and time periods to provide comprehensive insights.
+
 CONTEXT (Log Entries):
 {context}
 
@@ -284,13 +286,37 @@ VISUAL ENHANCEMENT EXAMPLES:
 - For trends: Use arrows (↗️ ↘️) to indicate increases/decreases
 - For status: Use status indicators (🟢 Healthy, 🟡 Warning, 🔴 Critical)
 
-Now provide a concise, structured response following the required headings. Focus on what's actually in the context provided."""
+IMPORTANT VISUAL GUIDELINES:
+- Keep visual bars SHORT (max 10-15 characters)
+- Use clean, minimal formatting
+- Focus on clarity over decoration
+- Avoid overly long or repetitive visual elements
+- Use simple progress indicators: [████████░░░░] 80%
+- DO NOT create extremely long visual bars like [🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴░░░░░░░░░░]
+- For percentages, use concise format: ERROR: 10% | WARN: 6% | INFO: 54% | DEBUG: 30%"""
 
         prompt = system_prompt.format(context=context, query=query, conversation_history=conversation_history)
         
         try:
             response = self.model.generate_content(prompt)
-            return response.text
+            response_text = response.text
+            
+            # Clean up overly long visual bars that make the output messy
+            # Replace extremely long visual bars with concise format
+            response_text = re.sub(
+                r'(\w+):\s*\d+%\s*\[([^\]]{20,})\]',  # Pattern for long visual bars
+                r'\1: \2%',  # Replace with just percentage and emoji count
+                response_text
+            )
+            
+            # Fix any remaining messy visual elements
+            response_text = re.sub(
+                r'\[([^\]]{30,})\]',  # Very long bracketed content
+                r'[\1]',  # Keep but truncate if too long
+                response_text
+            )
+            
+            return response_text
         
         except Exception as e:
             return f"Error generating response: {str(e)}"
@@ -308,7 +334,7 @@ Now provide a concise, structured response following the required headings. Focu
             }
 
         # Step 2: Retrieve relevant logs using vector search
-        relevant_logs = self.get_relevant_logs_from_vector_db(query, n_results=15)
+        relevant_logs = self.get_relevant_logs_from_vector_db(query, n_results=50)  # Increased from 15 to 50
 
         # Step 3: Enhanced fallback strategy - if vector search doesn't find enough, try broader approaches
         context = self.build_context_from_logs(relevant_logs, query)
@@ -317,9 +343,9 @@ Now provide a concise, structured response following the required headings. Focu
         # If vector search found very few results, try broader approaches
         if len(relevant_logs) < 3 or (context.strip() == "No relevant logs found for this query."):
             # Fallback 1: Get recent ERROR and WARN logs
-            fallback_logs = self.get_logs_by_severity('ERROR', 20) + self.get_logs_by_severity('WARN', 20)
+            fallback_logs = self.get_logs_by_severity('ERROR', 50) + self.get_logs_by_severity('WARN', 50)  # Increased from 20 to 50
             if fallback_logs:
-                fallback_context = self.build_context_from_logs(fallback_logs[:30], query + " (recent errors and warnings)")
+                fallback_context = self.build_context_from_logs(fallback_logs[:60], query + " (recent errors and warnings)")  # Increased from 30 to 60
                 if fallback_context and fallback_context != "No relevant logs found for this query.":
                     context = fallback_context
                     used_fallback = True
@@ -333,7 +359,7 @@ Now provide a concise, structured response following the required headings. Focu
                         FROM logs
                         WHERE timestamp >= datetime('now', '-24 hours')
                         ORDER BY timestamp DESC
-                        LIMIT 50
+                        LIMIT 100  # Increased from 50 to 100 for more comprehensive data
                     """)
                     recent_rows = cur.fetchall()
                     if recent_rows:
@@ -360,7 +386,7 @@ Now provide a concise, structured response following the required headings. Focu
 
             # Handle root cause requests
             if any(term in query_lower for term in ['root cause', 'cause of', 'why', 'reason']):
-                error_logs = self.get_logs_by_severity('ERROR', 10)
+                error_logs = self.get_logs_by_severity('ERROR', 20)  # Increased from 10 to 20
                 if error_logs:
                     response = self._generate_root_cause_analysis(error_logs, stats)
                 else:
@@ -372,7 +398,7 @@ Now provide a concise, structured response following the required headings. Focu
 
             # Handle solution requests
             elif any(term in query_lower for term in ['solution', 'fix', 'resolve', 'how to']):
-                error_logs = self.get_logs_by_severity('ERROR', 10)
+                error_logs = self.get_logs_by_severity('ERROR', 20)  # Increased from 10 to 20
                 if error_logs:
                     response = self._generate_solutions_response(error_logs, stats)
                 else:
@@ -400,7 +426,7 @@ Now provide a concise, structured response following the required headings. Focu
 
         # Group errors by type and frequency
         error_patterns = {}
-        for log in error_logs[:10]:  # Analyze top 10 errors
+        for log in error_logs[:20]:  # Analyze top 20 errors instead of 10
             message = log['message'].lower()
             if 'connection' in message or 'timeout' in message:
                 error_patterns['Connection/Network'] = error_patterns.get('Connection/Network', 0) + 1
@@ -423,11 +449,11 @@ Now provide a concise, structured response following the required headings. Focu
         response += f"### **📊 Analysis**\n"
         response += f"**Error Distribution:**\n"
         for pattern, count in error_patterns.items():
-            percentage = (count / len(error_logs[:10])) * 100
+            percentage = (count / len(error_logs[:20])) * 100  # Updated to use 20
             response += f"• {pattern}: {count} ({percentage:.1f}%)\n"
 
         response += f"\n**Most Frequent Errors:**\n"
-        for i, log in enumerate(error_logs[:5], 1):
+        for i, log in enumerate(error_logs[:8], 1):  # Show top 8 instead of 5
             response += f"{i}. [{log['timestamp']}] {log['filename']}:{log['line_number']} - {log['message']}\n"
 
         response += f"\n### **🔧 Solution**\n"
@@ -473,15 +499,15 @@ Now provide a concise, structured response following the required headings. Focu
 
             # Top errors
             if error_count > 0:
-                error_logs = self.get_logs_by_severity('ERROR', min(5, error_count))
-                response += f"### **🔴 Top {min(5, error_count)} ERROR logs:**\n"
+                error_logs = self.get_logs_by_severity('ERROR', min(10, error_count))  # Show more errors
+                response += f"### **🔴 Top {min(10, error_count)} ERROR logs:**\n"
                 for i, log in enumerate(error_logs, 1):
                     response += f"**{i}.** `{log['filename']}:{log['line_number']}` - {log['message']}\n"
 
             # Top warnings
             if warn_count > 0:
-                warn_logs = self.get_logs_by_severity('WARN', min(5, warn_count))
-                response += f"\n### **🟡 Top {min(5, warn_count)} WARNING logs:**\n"
+                warn_logs = self.get_logs_by_severity('WARN', min(8, warn_count))  # Show more warnings
+                response += f"\n### **🟡 Top {min(8, warn_count)} WARNING logs:**\n"
                 for i, log in enumerate(warn_logs, 1):
                     response += f"**{i}.** `{log['filename']}:{log['line_number']}` - {log['message']}\n"
 
@@ -529,7 +555,7 @@ Now provide a concise, structured response following the required headings. Focu
         }
 
         # Categorize errors
-        for log in error_logs[:10]:
+        for log in error_logs[:20]:  # Analyze more errors for better categorization
             message = log['message'].lower()
             if any(term in message for term in ['connection', 'timeout', 'network']):
                 error_types['connection']['count'] += 1
