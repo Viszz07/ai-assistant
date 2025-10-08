@@ -11,6 +11,8 @@ import time
 from db_setup import DatabaseSetup
 from log_generator import LogGenerator
 import shutil
+import re
+import json
 
 # Load environment variables from a .env file if present
 load_dotenv()
@@ -32,6 +34,10 @@ st.markdown("""
         color: #1f77b4;
         text-align: center;
         margin-bottom: 2rem;
+    }
+    /* Ensure main page content starts below the navbar */
+    .block-container {
+        padding-top: 4.5rem; /* increase if navbar still overlaps */
     }
     .tab-header {
         font-size: 1.8rem;
@@ -328,9 +334,7 @@ class LogAnalysisApp:
         
         # Chat interface
         st.markdown("Ask questions about your logs, such as:")
-        st.markdown("- *Show me database connection errors*")
         st.markdown("- *What are the most common errors?*")
-        st.markdown("- *How can I fix authentication issues?*")
         
         # Chat input at the top
         user_input = st.chat_input("Ask a question about your logs...")
@@ -338,15 +342,59 @@ class LogAnalysisApp:
             # Add user message to chat history
             st.session_state.chat_history.append({"role": "user", "content": user_input})
             
-            # Process query with LLM
+            # Process query with LLM (always structured output)
             try:
                 with st.spinner("Analyzing logs and generating response..."):
-                    result = llm.process_query(user_input)
+                    style_guide = (
+                        "Please answer in this exact structure using Markdown headings and short bullet lists:\n"
+                        "### **Root Cause / Main Issue** (Short, precise explanation of what caused the issue.)\n"
+                        "### **Analysis** (A detailed breakdown of patterns, trends, and observations.)\n"
+                        "### **Solution** (Specific, actionable steps to resolve or mitigate the problem.)\n"
+                        "### **Summary** (Short, precise explanation)\n"
+                        "Use **bold** for section headings and keep content concise."
+                    )
+                    composed_query = f"{style_guide}\n\nUser question: {user_input}"
+                    result = llm.process_query(composed_query)
                 # Add assistant response to chat history (no raw logs shown)
                 st.session_state.chat_history.append({
                     "role": "assistant", 
                     "content": result.get('response', '')
                 })
+                
+                # Contextual visuals inline (based on query intent)
+                keywords = [
+                    'error','warn','distribution','trend','spike','top','most',
+                    'frequency','chart','graph','pie','timeline','count','rate'
+                ]
+                if any(k in user_input.lower() for k in keywords):
+                    try:
+                        conn = self.get_database_connection()
+                        df_vis = pd.read_sql_query("SELECT * FROM logs", conn)
+                        conn.close()
+                        if not df_vis.empty:
+                            df_vis['timestamp'] = pd.to_datetime(df_vis['timestamp'], format='%Y-%m-%d-%H:%M:%S', errors='coerce')
+                            cutoff = datetime.now() - timedelta(hours=24)
+                            df_24 = df_vis[df_vis['timestamp'] >= cutoff]
+                            st.markdown("---")
+                            st.markdown("### Visual context (last 24h)")
+                            v1, v2 = st.columns(2)
+                            with v1:
+                                sev_counts = df_24['severity'].value_counts()
+                                if not sev_counts.empty:
+                                    fig_pie = px.pie(values=sev_counts.values, names=sev_counts.index, title="Severity Distribution")
+                                    st.plotly_chart(fig_pie, width='stretch')
+                                else:
+                                    st.info("No data in last 24h for severity distribution.")
+                            with v2:
+                                if not df_24.empty:
+                                    df_24['hour'] = df_24['timestamp'].dt.floor('h')
+                                    tdata = df_24.groupby(['hour', 'severity']).size().reset_index(name='count')
+                                    fig_line = px.line(tdata, x='hour', y='count', color='severity', title="Events Over Time")
+                                    st.plotly_chart(fig_line, width='stretch')
+                                else:
+                                    st.info("No events in last 24h to show timeline.")
+                    except Exception:
+                        pass
             except Exception as e:
                 st.session_state.chat_history.append({
                     "role": "assistant",
@@ -362,7 +410,8 @@ class LogAnalysisApp:
             else:
                 with st.chat_message("assistant"):
                     try:
-                        st.write(message.get("content", ""))
+                        content = message.get("content", "")
+                        st.markdown(content)
                     except Exception as e:
                         st.exception(e)
         
@@ -388,6 +437,7 @@ class LogAnalysisApp:
             if st.button("🗑️ Clear Chat History"):
                 st.session_state.chat_history = []
                 st.rerun()
+
     
     def render_dashboard_tab(self):
         """Render the Summary Dashboard tab"""
@@ -529,7 +579,7 @@ class LogAnalysisApp:
             return
         
         # Filters
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             severity_filter = st.multiselect(
@@ -553,6 +603,37 @@ class LogAnalysisApp:
         
         with col3:
             search_term = st.text_input("Search in Messages", "")
+
+        with col4:
+            limit_mode = st.selectbox(
+                "Time/Count Filter",
+                options=["None", "Recent N", "Last X hours", "Between (absolute)"],
+                index=0
+            )
+            n_limit = None
+            hours_back = None
+            start_dt = None
+            end_dt = None
+            if limit_mode == "Recent N":
+                n_limit = st.number_input("N", min_value=1, max_value=1000, value=5, step=1)
+            elif limit_mode == "Last X hours":
+                hours_back = st.number_input("Hours", min_value=1, max_value=168, value=24, step=1)
+            elif limit_mode == "Between (absolute)":
+                now_dt = datetime.now()
+                default_start_date = (now_dt - timedelta(hours=24)).date()
+                default_end_date = now_dt.date()
+                default_start_time = (now_dt - timedelta(hours=24)).time().replace(microsecond=0)
+                default_end_time = now_dt.time().replace(microsecond=0)
+                sd = st.date_input("Start date", value=default_start_date, key="abs_start_date")
+                stime = st.time_input("Start time", value=default_start_time, key="abs_start_time")
+                ed = st.date_input("End date", value=default_end_date, key="abs_end_date")
+                etime = st.time_input("End time", value=default_end_time, key="abs_end_time")
+                try:
+                    start_dt = datetime.combine(sd, stime)
+                    end_dt = datetime.combine(ed, etime)
+                except Exception:
+                    start_dt = None
+                    end_dt = None
         
         # Build query based on filters
         query = "SELECT * FROM logs WHERE 1=1"
@@ -572,7 +653,28 @@ class LogAnalysisApp:
             query += " AND message LIKE ?"
             params.append(f"%{search_term}%")
         
+        # Time-based filters
+        if limit_mode == "Last X hours" and hours_back is not None:
+            cutoff = datetime.now() - timedelta(hours=int(hours_back))
+            cutoff_str = cutoff.strftime('%Y-%m-%d-%H:%M:%S')
+            query += " AND timestamp >= ?"
+            params.append(cutoff_str)
+        elif limit_mode == "Between (absolute)" and start_dt is not None and end_dt is not None:
+            if start_dt > end_dt:
+                # Swap if user entered reversed dates
+                start_dt, end_dt = end_dt, start_dt
+            start_str = start_dt.strftime('%Y-%m-%d-%H:%M:%S')
+            end_str = end_dt.strftime('%Y-%m-%d-%H:%M:%S')
+            query += " AND timestamp BETWEEN ? AND ?"
+            params.extend([start_str, end_str])
+
+        # Always order by most recent first for consistent display
         query += " ORDER BY timestamp DESC"
+
+        # Count-based limit
+        if limit_mode == "Recent N" and n_limit is not None:
+            query += " LIMIT ?"
+            params.append(int(n_limit))
         
         # Load filtered data
         try:

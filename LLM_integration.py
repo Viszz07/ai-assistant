@@ -250,12 +250,10 @@ GUARDRAILS:
 5. Avoid assumptions and generic advice that are not grounded in the context.
 
 OUTPUT FORMAT (use these exact section headings):
-Summary:
-Key Issues:
-Probable Causes:
-Quick Fixes:
-Next Steps:
-Conclusion:
+### **Root Cause / Main Issue** (Short, precise explanation of what caused the issue.)
+### **Analysis** (A detailed breakdown of patterns, trends, and observations.)
+### **Solution** (Specific, actionable steps to resolve or mitigate the problem.)
+### **Summary** (Short, precise explanation)
 
 CONTEXT (Log Entries):
 {context}
