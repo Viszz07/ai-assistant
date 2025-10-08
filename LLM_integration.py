@@ -235,7 +235,7 @@ class LLMIntegration:
         
         return context
     
-    def generate_safe_response(self, query: str, context: str) -> str:
+    def generate_safe_response(self, query: str, context: str, conversation_history: str = "") -> str:
         """
         Generate response using Gemini API with safety guardrails.
         """
@@ -258,11 +258,31 @@ OUTPUT FORMAT (use these exact section headings):
 CONTEXT (Log Entries):
 {context}
 
+CONVERSATION HISTORY (previous Q&A context):
+{conversation_history}
+
 USER QUERY: {query}
+
+RESPONSE REQUIREMENTS:
+- Provide a structured response using the exact section headings specified.
+- After the Summary section, add a "Suggested Follow-ups" section with 2-3 relevant questions that can be answered based on the available log data.
+- Make sure follow-up questions are specific and can be answered with the current dataset.
+- Enhance responses with visual elements where appropriate:
+  - Use markdown tables for comparing data or showing distributions
+  - Include progress bars or visual indicators for metrics (e.g., [████████░░] 80%)
+  - Add color-coded severity indicators (🔴 ERROR, 🟡 WARN, 🔵 INFO, ⚫ DEBUG)
+  - Use bullet points with emojis for better readability (✅, ⚠️, 📊, etc.)
+  - Include simple ASCII charts for trends when relevant
+
+VISUAL ENHANCEMENT EXAMPLES:
+- For error counts: Create a simple bar chart using markdown
+- For severity distribution: Show as a visual breakdown
+- For trends: Use arrows (↗️ ↘️) to indicate increases/decreases
+- For status: Use status indicators (🟢 Healthy, 🟡 Warning, 🔴 Critical)
 
 Now provide a concise, structured response following the required headings. Do not include raw logs."""
 
-        prompt = system_prompt.format(context=context, query=query)
+        prompt = system_prompt.format(context=context, query=query, conversation_history=conversation_history)
         
         try:
             response = self.model.generate_content(prompt)
@@ -271,7 +291,7 @@ Now provide a concise, structured response following the required headings. Do n
         except Exception as e:
             return f"Error generating response: {str(e)}"
     
-    def process_query(self, query: str) -> Dict[str, Any]:
+    def process_query(self, query: str, conversation_history: str = "") -> Dict[str, Any]:
         """
         Main method to process user queries with full RAG pipeline.
         """
@@ -286,11 +306,45 @@ Now provide a concise, structured response following the required headings. Do n
         # Step 2: Retrieve relevant logs using vector search
         relevant_logs = self.get_relevant_logs_from_vector_db(query, n_results=15)
         
-        # Step 3: Build context from relevant logs
+        # Step 3: Enhanced fallback strategy - if vector search doesn't find enough, try broader approaches
         context = self.build_context_from_logs(relevant_logs, query)
+        used_fallback = False
+        
+        # If vector search found very few results, try broader approaches
+        if len(relevant_logs) < 3 or (context.strip() == "No relevant logs found for this query."):
+            # Fallback 1: Get recent ERROR and WARN logs
+            fallback_logs = self.get_logs_by_severity('ERROR', 20) + self.get_logs_by_severity('WARN', 20)
+            if fallback_logs:
+                fallback_context = self.build_context_from_logs(fallback_logs[:30], query + " (recent errors and warnings)")
+                if fallback_context and fallback_context != "No relevant logs found for this query.":
+                    context = fallback_context
+                    used_fallback = True
+            
+            # Fallback 2: If still no good results, get a broader set of recent logs
+            if not used_fallback or len(relevant_logs) < 2:
+                try:
+                    cur = self.sqlite_conn.cursor()
+                    cur.execute("""
+                        SELECT timestamp, filename, line_number, severity, message 
+                        FROM logs 
+                        WHERE timestamp >= datetime('now', '-24 hours')
+                        ORDER BY timestamp DESC 
+                        LIMIT 50
+                    """)
+                    recent_rows = cur.fetchall()
+                    if recent_rows:
+                        lines = ["Recent logs (last 24 hours) for context:"]
+                        for i, row in enumerate(recent_rows, 1):
+                            ts, fn, ln, sev, msg = row
+                            short_msg = (msg[:140] + '…') if len(msg) > 140 else msg
+                            lines.append(f"{i}. [{ts}] {sev} in {fn}:{ln} — {short_msg}")
+                        context = "\n".join(lines)
+                        used_fallback = True
+                except Exception:
+                    pass
         
         # Step 4: Generate response using Gemini API
-        response = self.generate_safe_response(query, context)
+        response = self.generate_safe_response(query, context, conversation_history)
         
         return {
             'response': response,

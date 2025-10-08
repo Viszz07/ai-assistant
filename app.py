@@ -127,197 +127,198 @@ class LogAnalysisApp:
             return None
     
     def render_sidebar(self):
-        """Render sidebar with system information"""
-        st.sidebar.title("💊 Service Cure Insights")
-        
-        if st.session_state.db_initialized:
-            st.sidebar.success("✅ Database Connected")
-        else:
-            st.sidebar.info("💡 Load logs to get started")
-        
-        st.sidebar.subheader("📥 Data Ingestion")
+        """Render the sidebar with log ingestion controls"""
+        with st.sidebar:
+            st.title("💊 Service Cure Insights")
 
-        # Generate sample logs and ingest
-        if st.sidebar.button("🧪 Generate Sample Logs and Ingest"):
-            with st.spinner("Generating sample logs and ingesting into databases..."):
-                try:
-                    # Generate logs
-                    gen = LogGenerator()
-                    gen.generate_all_logs()
+            if st.session_state.db_initialized:
+                st.success("✅ Database Connected")
+            else:
+                st.info("💡 Load logs to get started")
 
-                    # Setup and load databases
-                    dbs = DatabaseSetup()
-                    dbs.setup_sqlite()
-                    dbs.setup_chromadb()
-                    dbs.load_all_logs()
-                    dbs.close_connections()
+            st.subheader("📥 Data Ingestion")
 
-                    st.session_state.db_initialized = True
-                    st.session_state.ingest_message = "✅ Sample logs generated and ingested successfully."
-                except Exception as e:
-                    st.session_state.ingest_message = f"❌ Ingestion failed: {e}"
-
-        # Upload and ingest custom logs
-        uploaded = st.sidebar.file_uploader("Upload .log files", type=["log", "txt"], accept_multiple_files=True)
-        if uploaded:
-            st.session_state.uploaded_logs = uploaded
-        if st.session_state.uploaded_logs:
-            if st.sidebar.button("📦 Ingest Uploaded Logs"):
-                with st.spinner("Saving uploaded files and ingesting into databases..."):
+            # Generate sample logs and ingest
+            if st.button("🧪 Generate Sample Logs and Ingest"):
+                with st.spinner("Generating sample logs and ingesting into databases..."):
                     try:
-                        os.makedirs("logs", exist_ok=True)
-                        # Save uploaded files
-                        saved_files = []
-                        for f in st.session_state.uploaded_logs:
-                            save_path = os.path.join("logs", f.name)
-                            with open(save_path, "wb") as out:
-                                out.write(f.getbuffer())
-                            saved_files.append(save_path)
+                        # Generate logs
+                        gen = LogGenerator()
+                        gen.generate_all_logs()
 
-                        # Setup and (re)load databases
+                        # Setup and load databases
                         dbs = DatabaseSetup()
                         dbs.setup_sqlite()
                         dbs.setup_chromadb()
-                        # If you only want to load just uploaded files, we can process then insert
-                        all_entries = []
-                        for lf in saved_files:
-                            all_entries.extend(dbs.process_log_file(lf))
-                        if all_entries:
-                            dbs.insert_logs_to_sqlite(all_entries)
-                            dbs.insert_logs_to_chromadb(all_entries)
-                            dbs.print_database_summary()
+                        dbs.load_all_logs()
                         dbs.close_connections()
 
                         st.session_state.db_initialized = True
-                        st.session_state.ingest_message = f"✅ Ingested {len(saved_files)} uploaded files successfully."
+                        st.session_state.ingest_message = "✅ Sample logs generated and ingested successfully."
                     except Exception as e:
                         st.session_state.ingest_message = f"❌ Ingestion failed: {e}"
 
-        if st.session_state.ingest_message:
-            st.sidebar.info(st.session_state.ingest_message)
-
-        # Ingest only selected existing logs (service-specific ingest)
-        if os.path.exists("logs"):
-            try:
-                existing_logs = [f for f in os.listdir("logs") if f.lower().endswith((".log", ".txt"))]
-            except Exception:
-                existing_logs = []
-            if existing_logs:
-                selected_logs = st.sidebar.multiselect("Select logs to ingest", options=existing_logs, default=[])
-                if st.sidebar.button("➡️ Ingest Selected Existing Logs") and selected_logs:
-                    with st.spinner("Ingesting selected logs..."):
+            # Upload and ingest custom logs
+            uploaded = st.file_uploader("Upload .log files", type=["log", "txt"], accept_multiple_files=True)
+            if uploaded:
+                st.session_state.uploaded_logs = uploaded
+            if st.session_state.uploaded_logs:
+                if st.button("📦 Ingest Uploaded Logs"):
+                    with st.spinner("Saving uploaded files and ingesting into databases..."):
                         try:
+                            os.makedirs("logs", exist_ok=True)
+                            # Save uploaded files
+                            saved_files = []
+                            for f in st.session_state.uploaded_logs:
+                                save_path = os.path.join("logs", f.name)
+                                with open(save_path, "wb") as out:
+                                    out.write(f.getbuffer())
+                                saved_files.append(save_path)
+
+                            # Setup and (re)load databases
                             dbs = DatabaseSetup()
                             dbs.setup_sqlite()
                             dbs.setup_chromadb()
+                            # If you only want to load just uploaded files, we can process then insert
                             all_entries = []
-                            for name in selected_logs:
-                                path = os.path.join("logs", name)
-                                all_entries.extend(dbs.process_log_file(path))
+                            for lf in saved_files:
+                                all_entries.extend(dbs.process_log_file(lf))
                             if all_entries:
                                 dbs.insert_logs_to_sqlite(all_entries)
                                 dbs.insert_logs_to_chromadb(all_entries)
                                 dbs.print_database_summary()
                             dbs.close_connections()
+
                             st.session_state.db_initialized = True
-                            st.session_state.ingest_message = f"✅ Ingested {len(selected_logs)} selected log file(s)."
+                            st.session_state.ingest_message = f"✅ Ingested {len(saved_files)} uploaded files successfully."
                         except Exception as e:
                             st.session_state.ingest_message = f"❌ Ingestion failed: {e}"
 
-        # Maintenance / Reset controls
-        st.sidebar.subheader("🧹 Maintenance")
-        delete_logs = st.sidebar.checkbox("Also delete log files", value=False)
-        if st.sidebar.button("🧽 Soft Reset (Truncate Data)"):
-            with st.spinner("Truncating data without deleting files..."):
+            if st.session_state.ingest_message:
+                st.info(st.session_state.ingest_message)
+
+            # Ingest only selected existing logs (service-specific ingest)
+            if os.path.exists("logs"):
                 try:
-                    # Close cached llm instance to avoid locks
-                    llm_instance = st.session_state.get('llm_integration')
-                    if llm_instance is not None:
-                        try:
-                            llm_instance.close_connections()
-                        except Exception:
-                            pass
-                        finally:
-                            st.session_state.llm_integration = None
+                    existing_logs = [f for f in os.listdir("logs") if f.lower().endswith((".log", ".txt"))]
+                except Exception:
+                    existing_logs = []
+                if existing_logs:
+                    selected_logs = st.multiselect("Select logs to ingest", options=existing_logs, default=[])
+                    if st.button("➡️ Ingest Selected Existing Logs") and selected_logs:
+                        with st.spinner("Ingesting selected logs..."):
+                            try:
+                                dbs = DatabaseSetup()
+                                dbs.setup_sqlite()
+                                dbs.setup_chromadb()
+                                all_entries = []
+                                for name in selected_logs:
+                                    path = os.path.join("logs", name)
+                                    all_entries.extend(dbs.process_log_file(path))
+                                if all_entries:
+                                    dbs.insert_logs_to_sqlite(all_entries)
+                                    dbs.insert_logs_to_chromadb(all_entries)
+                                    dbs.print_database_summary()
+                                dbs.close_connections()
+                                st.session_state.db_initialized = True
+                                st.session_state.ingest_message = f"✅ Ingested {len(selected_logs)} selected log file(s)."
+                            except Exception as e:
+                                st.session_state.ingest_message = f"❌ Ingestion failed: {e}"
 
-                    # Truncate SQLite logs table
-                    if os.path.exists(self.db_path):
-                        try:
-                            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-                            cur = conn.cursor()
-                            cur.execute("DELETE FROM logs")
-                            conn.commit()
-                            conn.close()
-                        except Exception as e:
-                            st.warning(f"SQLite truncate warning: {e}")
-
-                    # Reset ChromaDB collection
+            # Maintenance / Reset controls
+            st.subheader("🧹 Maintenance")
+            delete_logs = st.checkbox("Also delete log files", value=False)
+            if st.button("🧽 Soft Reset (Truncate Data)"):
+                with st.spinner("Truncating data without deleting files..."):
                     try:
-                        import chromadb
-                        client = chromadb.PersistentClient(path="./chroma_db")
-                        try:
-                            client.delete_collection("log_embeddings")
-                        except Exception:
-                            pass
-                        client.create_collection(name="log_embeddings", metadata={"description": "Log message embeddings for semantic search"})
-                    except Exception as e:
-                        st.warning(f"ChromaDB reset warning: {e}")
+                        # Close cached llm instance to avoid locks
+                        llm_instance = st.session_state.get('llm_integration')
+                        if llm_instance is not None:
+                            try:
+                                llm_instance.close_connections()
+                            except Exception:
+                                pass
+                            finally:
+                                st.session_state.llm_integration = None
 
-                    st.session_state.ingest_message = "✅ Soft reset complete. Databases are empty; please ingest logs."
-                    st.session_state.db_initialized = os.path.exists(self.db_path)
-                    st.session_state.chat_history = []
-                    st.success("Soft reset complete.")
-                except Exception as e:
-                    st.error(f"Soft reset failed: {e}")
-        if st.sidebar.button("♻️ Reset Databases"):
-            with st.spinner("Resetting databases..."):
-                try:
-                    # Close any existing LLM integration (to release DB file handle on Windows)
-                    llm_instance = st.session_state.get('llm_integration')
-                    if llm_instance is not None:
-                        try:
-                            llm_instance.close_connections()
-                        except Exception:
-                            pass
-                        finally:
-                            st.session_state.llm_integration = None
+                        # Truncate SQLite logs table
+                        if os.path.exists(self.db_path):
+                            try:
+                                conn = sqlite3.connect(self.db_path, check_same_thread=False)
+                                cur = conn.cursor()
+                                cur.execute("DELETE FROM logs")
+                                conn.commit()
+                                conn.close()
+                            except Exception as e:
+                                st.warning(f"SQLite truncate warning: {e}")
 
-                    # Delete SQLite DB
-                    if os.path.exists(self.db_path):
+                        # Reset ChromaDB collection
                         try:
-                            os.remove(self.db_path)
+                            import chromadb
+                            client = chromadb.PersistentClient(path="./chroma_db")
+                            try:
+                                client.delete_collection("log_embeddings")
+                            except Exception:
+                                pass
+                            client.create_collection(name="log_embeddings", metadata={"description": "Log message embeddings for semantic search"})
                         except Exception as e:
-                            st.error(f"Failed to delete SQLite database: {e}")
+                            st.warning(f"ChromaDB reset warning: {e}")
+
+                        st.session_state.ingest_message = "✅ Soft reset complete. Databases are empty; please ingest logs."
+                        st.session_state.db_initialized = os.path.exists(self.db_path)
+                        st.session_state.chat_history = []
+                        st.success("Soft reset complete.")
+                    except Exception as e:
+                        st.error(f"Soft reset failed: {e}")
+            if st.button("♻️ Reset Databases"):
+                with st.spinner("Resetting databases..."):
+                    try:
+                        # Close any existing LLM integration (to release DB file handle on Windows)
+                        llm_instance = st.session_state.get('llm_integration')
+                        if llm_instance is not None:
+                            try:
+                                llm_instance.close_connections()
+                            except Exception:
+                                pass
+                            finally:
+                                st.session_state.llm_integration = None
+
+                        # Delete SQLite DB
+                        if os.path.exists(self.db_path):
+                            try:
+                                os.remove(self.db_path)
+                            except Exception as e:
+                                st.error(f"Failed to delete SQLite database: {e}")
+                                raise
+
+                        # Reset ChromaDB collection (don't delete directory - Windows file lock issue)
+                        # Instead, delete and recreate the collection
+                        try:
+                            import chromadb
+                            client = chromadb.PersistentClient(path="./chroma_db")
+                            try:
+                                client.delete_collection("log_embeddings")
+                            except Exception:
+                                pass  # Collection might not exist
+                            # Recreate empty collection
+                            client.create_collection(
+                                name="log_embeddings",
+                                metadata={"description": "Log message embeddings for semantic search"}
+                            )
+                        except Exception as e:
+                            st.error(f"Failed to reset ChromaDB collection: {e}")
                             raise
-
-                    # Reset ChromaDB collection (don't delete directory - Windows file lock issue)
-                    # Instead, delete and recreate the collection
-                    try:
-                        import chromadb
-                        client = chromadb.PersistentClient(path="./chroma_db")
-                        try:
-                            client.delete_collection("log_embeddings")
-                        except Exception:
-                            pass  # Collection might not exist
-                        # Recreate empty collection
-                        client.create_collection(
-                            name="log_embeddings",
-                            metadata={"description": "Log message embeddings for semantic search"}
-                        )
+                        # Optionally delete logs
+                        if delete_logs and os.path.exists("logs"):
+                            shutil.rmtree("logs", ignore_errors=True)
+                        # Update state
+                        st.session_state.db_initialized = False
+                        st.session_state.chat_history = []
+                        st.session_state.ingest_message = "✅ Databases reset successfully. Please ingest logs to continue."
+                        st.success("Reset complete.")
+                        st.rerun()
                     except Exception as e:
-                        st.error(f"Failed to reset ChromaDB collection: {e}")
-                        raise
-                    # Optionally delete logs
-                    if delete_logs and os.path.exists("logs"):
-                        shutil.rmtree("logs", ignore_errors=True)
-                    # Update state
-                    st.session_state.db_initialized = False
-                    st.session_state.chat_history = []
-                    st.session_state.ingest_message = "✅ Databases reset successfully. Please ingest logs to continue."
-                    st.success("Reset complete.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Reset failed: {e}")
+                        st.error(f"Reset failed: {e}")
     
     def render_chat_tab(self):
         """Render the Chat Assistant tab"""
@@ -409,11 +410,7 @@ class LogAnalysisApp:
                     st.write(message["content"]) 
             else:
                 with st.chat_message("assistant"):
-                    try:
-                        content = message.get("content", "")
-                        st.markdown(content)
-                    except Exception as e:
-                        st.exception(e)
+                    st.markdown(message.get("content", ""))
         
         # Quick actions row at the bottom
         qa_col1, qa_col2 = st.columns([1,1])
