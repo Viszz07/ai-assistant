@@ -510,15 +510,29 @@ class LogAnalysisApp:
         df['hour'] = df['timestamp'].dt.floor('h')
         timeline_data = df.groupby(['hour', 'severity']).size().reset_index(name='count')
 
-        # Debug information and error handling
-        st.info(f"📊 Timeline data: {len(timeline_data)} data points from {len(df)} total logs across {df['hour'].nunique()} time periods")
+        # Enhanced debug information and error handling
+        st.info(f"📊 **Timeline Analysis:** {len(timeline_data)} data points from {len(df)} total logs across {df['hour'].nunique()} time periods")
+
+        # Show raw data for debugging
+        if st.checkbox("🔍 Show Timeline Debug Data", key="timeline_debug"):
+            st.write("**Raw Timeline Data:**")
+            st.dataframe(timeline_data.head(10))
+            st.write(f"**Hour Range:** {df['hour'].min()} to {df['hour'].max()}")
+            st.write(f"**Severity Counts:** {df['severity'].value_counts().to_dict()}")
 
         if timeline_data.empty:
-            st.info("📈 No timeline data available. Charts will appear as data is collected over multiple time periods.")
-        elif len(timeline_data) < 3:
-            st.info(f"📈 Limited timeline data ({len(timeline_data)} points). Need more data points across different time periods for meaningful trend visualization.")
+            st.warning("📈 **No Timeline Data:** No data available for timeline chart. Please ensure logs are properly ingested.")
+        elif len(timeline_data) < 2:
+            st.warning(f"📈 **Insufficient Data:** Only {len(timeline_data)} data point(s) available. Timeline charts need at least 2 points across different time periods.")
+            
+            # Show what data we have
+            if not timeline_data.empty:
+                st.write("**Available Data:**")
+                for _, row in timeline_data.iterrows():
+                    st.write(f"- {row['hour'].strftime('%Y-%m-%d %H:%M')}: {row['severity']} = {row['count']}")
         else:
             try:
+                # Enhanced chart with better formatting
                 fig_timeline = px.line(
                     timeline_data,
                     x='hour',
@@ -530,25 +544,55 @@ class LogAnalysisApp:
                         'WARN': '#dd6b20',
                         'INFO': '#38a169',
                         'DEBUG': '#3182ce'
-                    }
+                    },
+                    markers=True  # Add markers to make lines more visible
                 )
+                
+                # Enhanced layout with better formatting
                 fig_timeline.update_layout(
                     xaxis_title="Time (Hourly)",
                     yaxis_title="Event Count",
-                    showlegend=True
+                    showlegend=True,
+                    hovermode='x unified',
+                    xaxis=dict(
+                        tickformat='%H:%M\n%m-%d',
+                        tickangle=45
+                    ),
+                    height=400
                 )
+                
+                # Add grid lines for better readability
+                fig_timeline.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+                fig_timeline.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+                
                 st.plotly_chart(fig_timeline, use_container_width=True)
 
-                # Show additional insights
+                # Enhanced insights with more details
                 try:
                     time_span_hours = (df['hour'].max() - df['hour'].min()).total_seconds() / 3600
-                    st.info(f"📊 **Timeline Insights:** Data spans {df['hour'].min().strftime('%H:%M')} to {df['hour'].max().strftime('%H:%M')} ({time_span_hours:.1f} hours)")
-                except:
-                    st.info(f"📊 **Timeline Insights:** Data spans {df['hour'].nunique()} unique time periods")
+                    peak_hour = timeline_data.loc[timeline_data['count'].idxmax()]
+                    total_events = timeline_data['count'].sum()
+                    
+                    st.success(f"""
+                    📊 **Timeline Insights:**
+                    - **Time Span:** {df['hour'].min().strftime('%H:%M %m-%d')} to {df['hour'].max().strftime('%H:%M %m-%d')} ({time_span_hours:.1f} hours)
+                    - **Peak Activity:** {peak_hour['hour'].strftime('%H:%M %m-%d')} with {peak_hour['count']} {peak_hour['severity']} events
+                    - **Total Events:** {total_events} across all time periods
+                    - **Average per Hour:** {total_events / df['hour'].nunique():.1f} events
+                    """)
+                except Exception as insight_error:
+                    st.info(f"📊 **Timeline Insights:** Data spans {df['hour'].nunique()} unique time periods (insight calculation error: {str(insight_error)})")
 
             except Exception as chart_error:
-                st.error(f"📈 Chart rendering error: {str(chart_error)}")
-                st.info("This might be due to insufficient data variety or timestamp formatting issues.")
+                st.error(f"📈 **Chart Rendering Error:** {str(chart_error)}")
+                st.info("**Possible causes:**")
+                st.info("- Timestamp formatting issues")
+                st.info("- Insufficient data variety")
+                st.info("- Memory or processing constraints")
+                
+                # Fallback: Show simple table
+                st.write("**Fallback - Timeline Data Table:**")
+                st.dataframe(timeline_data)
         
         # Recent critical issues
         st.subheader("🚨 Recent Critical Issues")

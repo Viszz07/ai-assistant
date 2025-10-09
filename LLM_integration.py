@@ -274,7 +274,54 @@ class LLMIntegration:
 📈 **Key Difference:** [1 sentence highlight]
 
 **MANDATORY: Always end with EXACTLY 3 specific follow-up questions.**
-**MANDATORY: Always try to create bar graphs, charts o visually applealing response possible.**
+**MANDATORY: Always try to create bar graphs, charts or visually appealing response possible.**
+**Preferred Visual Elements:**
+- **Bar charts**: For comparing error counts across components
+- **Pie charts**: For severity distribution percentages  
+- **Tables**: Only for tabular data with clear headers
+- **Timelines**: For showing error trends over time
+- **Heatmaps**: For correlation analysis
+
+**Visual Response Template:**
+```
+📊 **Visual Summary** [Chart Type]
+[ASCII or emoji-based visualization]
+🔍 **Key Insights**
+- Insight 1
+- Insight 2
+✅ **Recommended Actions**
+- Action 1
+- Action 2
+❓ **Follow-ups**
+1. Question 1
+2. Question 2
+3. Question 3
+```
+
+**Examples of Good Visual Responses:**
+1. **Bar Chart Example**:
+```
+📊 **Error Distribution by Component** (Bar Chart)
+MME  ████████████████████ 15
+AMF  ████████████ 10
+SMF  ███████ 7
+
+🔍 **Key Insights**
+- MME has highest error count (15)
+- AMF/SMF ratio is 1.4:1
+```
+
+2. **Pie Chart Example**:
+```
+📊 **Severity Distribution** (Pie Chart)
+🔴 ERROR: 25% ████████
+🟡 WARN: 15%  █████
+🟢 INFO: 60%  ████████████████████
+
+🔍 **Key Insights**
+- 1 in 4 events are errors
+- Healthy info message ratio (60%)
+```
 
 **Examples of Good Responses:**
 - "🔍 **Network Congestion:** High packet loss detected in core network components. 📊 **Impact:** ERROR: 15% | WARN: 8% | INFO: 77%. ✅ **Quick Fix:** • Check bandwidth allocation • Review QoS policies • Scale VNF instances.**❓ **Follow-ups:** • What specific components show the highest packet loss? • How has network performance trended over the last week? • Can you show me the VNF deployment status?**"
@@ -345,7 +392,7 @@ class LLMIntegration:
             module_counts[module] = module_counts.get(module, 0) + 1
 
     def generate_visual_log_summary(self, logs_data):
-        """Generate concise visual summary of log data"""
+        """Generate enhanced visual summary of log data with ASCII charts"""
         if not logs_data:
             return ""
 
@@ -362,40 +409,122 @@ class LLMIntegration:
             component = log.get('component', 'Unknown')
             component_counts[component] = component_counts.get(component, 0) + 1
 
-        # Create concise visual elements
+        # Create enhanced visual elements
         visual_summary = ""
 
-        # Simple severity overview
+        # Enhanced severity distribution with ASCII bar chart
         if severity_counts:
             total = sum(severity_counts.values())
+            visual_summary += "\n📊 **Severity Distribution** (Visual Chart)\n"
+            
+            # Sort by severity importance
+            severity_order = ['ERROR', 'WARN', 'INFO', 'DEBUG']
+            for severity in severity_order:
+                if severity in severity_counts:
+                    count = severity_counts[severity]
+                    percentage = (count / total) * 100
+                    bar_length = int((count / total) * 20)  # Scale to 20 chars
+                    bar = "█" * bar_length
+                    
+                    # Color-coded emojis
+                    emoji = {"ERROR": "🔴", "WARN": "🟡", "INFO": "🟢", "DEBUG": "🔵"}.get(severity, "⚪")
+                    visual_summary += f"{emoji} {severity:5s}: {percentage:4.1f}% {bar} ({count})\n"
+
+        # Enhanced component activity with visual bars
+        if component_counts:
+            visual_summary += "\n🏗️ **Component Activity** (Visual Chart)\n"
+            max_count = max(component_counts.values())
+            
+            # Show top 5 components
+            top_components = sorted(component_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            for comp, count in top_components:
+                bar_length = int((count / max_count) * 15)  # Scale to 15 chars
+                bar = "█" * bar_length + "░" * (15 - bar_length)
+                visual_summary += f"{comp:8s} {bar} {count:3d}\n"
+
+        # Add summary insights
+        if severity_counts:
             error_pct = (severity_counts.get('ERROR', 0) / total) * 100
             warn_pct = (severity_counts.get('WARN', 0) / total) * 100
-
-            visual_summary += f"\n📊 **Status:** 🔴 {error_pct:.0f}% errors | 🟡 {warn_pct:.0f}% warnings"
-
-        # Most active component (if significant)
-        if component_counts:
-            top_comp = max(component_counts.items(), key=lambda x: x[1])
-            if top_comp[1] > 1:  # Only show if meaningful activity
-                visual_summary += f"\n🏆 **Most Active:** {top_comp[0]} ({top_comp[1]} events)"
+            
+            visual_summary += f"\n🎯 **Quick Insights:**\n"
+            if error_pct > 20:
+                visual_summary += f"⚠️  High error rate: {error_pct:.0f}% - Needs attention\n"
+            elif error_pct > 5:
+                visual_summary += f"🟡 Moderate errors: {error_pct:.0f}% - Monitor closely\n"
+            else:
+                visual_summary += f"✅ Low error rate: {error_pct:.0f}% - System healthy\n"
 
         return visual_summary
 
-    def create_ascii_bar_chart(self, data_dict, title="", max_bar_length=12):
-        """Create an ASCII bar chart from a dictionary of values"""
+    def create_ascii_bar_chart(self, data_dict, title="", max_bar_length=20):
+        """Create an enhanced ASCII bar chart from a dictionary of values"""
         if not data_dict:
             return ""
 
         # Find max value for scaling
         max_value = max(data_dict.values()) if data_dict else 1
-
-        chart = f"\n{title}\n" if title else "\n"
-        for label, value in sorted(data_dict.items(), key=lambda x: x[1], reverse=True):
-            # Scale the bar length
+        
+        chart = ""
+        if title:
+            chart += f"\n📊 **{title}**\n"
+        
+        # Sort by value (descending)
+        sorted_items = sorted(data_dict.items(), key=lambda x: x[1], reverse=True)
+        
+        for key, value in sorted_items:
+            # Calculate bar length
             bar_length = int((value / max_value) * max_bar_length)
             bar = "█" * bar_length + "░" * (max_bar_length - bar_length)
-            chart += f"{label:8s} {bar} ({value})\n"
+            
+            # Format with proper spacing
+            chart += f"{key:12s} {bar} {value:4d}\n"
+        
+        return chart
 
+    def create_ascii_pie_chart(self, data_dict, title=""):
+        """Create an ASCII pie chart representation"""
+        if not data_dict:
+            return ""
+        
+        total = sum(data_dict.values())
+        chart = ""
+        
+        if title:
+            chart += f"\n🥧 **{title}** (Pie Chart)\n"
+        
+        # Sort by value (descending)
+        sorted_items = sorted(data_dict.items(), key=lambda x: x[1], reverse=True)
+        
+        for key, value in sorted_items:
+            percentage = (value / total) * 100
+            # Create visual representation with blocks
+            block_count = int(percentage / 5)  # Each block represents 5%
+            blocks = "█" * block_count
+            
+            chart += f"{key:10s}: {percentage:5.1f}% {blocks} ({value})\n"
+        
+        return chart
+
+    def create_timeline_chart(self, time_data, title=""):
+        """Create an ASCII timeline chart"""
+        if not time_data:
+            return ""
+        
+        chart = ""
+        if title:
+            chart += f"\n📈 **{title}** (Timeline)\n"
+        
+        # Sort by time
+        sorted_times = sorted(time_data.items())
+        max_value = max(time_data.values()) if time_data else 1
+        
+        for time_key, value in sorted_times:
+            bar_length = int((value / max_value) * 15)
+            bar = "█" * bar_length
+            
+            chart += f"{time_key} {bar:15s} {value}\n"
+        
         return chart
 
     def create_trend_chart(self, time_series_data, title=""):
@@ -403,18 +532,25 @@ class LLMIntegration:
         if not time_series_data:
             return ""
 
-        chart = f"\n{title}\n" if title else "\n"
+        chart = ""
+        if title:
+            chart += f"\n📈 **{title}** (Trend Chart)\n"
 
-        for time_point, (value, trend) in time_series_data.items():
-            # Scale bar length based on value
-            max_value = max(v[0] for v in time_series_data.values()) if time_series_data else 1
-            bar_length = int((value / max_value) * 10) if max_value > 0 else 0
-            bar = "█" * bar_length + "░" * (10 - bar_length)
-
-            trend_emoji = "↗️" if trend == "up" else "↘️" if trend == "down" else "➡️"
-            trend_text = "(increasing)" if trend == "up" else "(decreasing)" if trend == "down" else "(stable)"
-
-            chart += f"{time_point:5s} {bar} {trend_emoji} {trend_text}\n"
+        # Get max value for scaling
+        max_value = max(v[0] if isinstance(v, tuple) else v for v in time_series_data.values()) if time_series_data else 1
+        
+        for time_point, data in sorted(time_series_data.items()):
+            if isinstance(data, tuple):
+                value, trend = data
+                trend_arrow = "↗️" if trend > 0 else "↘️" if trend < 0 else "➡️"
+            else:
+                value = data
+                trend_arrow = "➡️"
+            
+            bar_length = int((value / max_value) * 12)
+            bar = "█" * bar_length
+            
+            chart += f"{time_point} {bar:12s} {value:3d} {trend_arrow}\n"
 
         return chart
 
