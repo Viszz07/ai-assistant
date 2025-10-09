@@ -1,0 +1,120 @@
+2025-10-09-06:43:04 main.py 1 ERROR ALARM: CPU utilization sustained >90% | root_cause=network_jitter; suggested_action=analyze VIM node utilization
+2025-10-09-06:43:07 data_ingestor.py 2 WARN NWDAF event trigger delay detected | root_cause=timeout_exceeded; suggested_action=increase CPU/memory limits
+2025-10-09-06:43:09 report_generator.py 3 INFO Starting network assurance bootstrap sequence
+2025-10-09-06:43:15 remediation_engine.py 4 INFO Data ingestion lag beyond 30s threshold
+2025-10-09-06:43:21 remediation_engine.py 5 WARN ALARM: latency exceeded 40ms SLA limit | root_cause=timeout_exceeded; suggested_action=inspect network path
+2025-10-09-06:43:24 remediation_engine.py 6 ERROR Activation timeout detected in VNFM client | root_cause=timeout_exceeded; suggested_action=inspect network path
+2025-10-09-06:43:26 vnfm_client.py 7 ERROR Service discovery via Consul completed | root_cause=resource_exhaustion; suggested_action=validate VNFM health
+2025-10-09-06:43:30 vnfm_client.py 8 DEBUG Data ingestion lag beyond 30s threshold
+2025-10-09-06:43:36 vnfm_client.py 9 INFO VNFM connectivity established successfully
+2025-10-09-06:43:38 metrics_collector.py 10 DEBUG Service discovery via Consul completed
+2025-10-09-06:43:41 vnfm_client.py 11 INFO Restart initiated for failed pod instances
+2025-10-09-06:43:45 config_loader.py 12 INFO Deploying assurance VNFs/CNFs via orchestrator
+2025-10-09-06:43:51 vim_connector.py 13 DEBUG Service discovery via Consul completed
+2025-10-09-06:43:56 main.py 14 WARN Audit event generated for incident closure | root_cause=resource_exhaustion; suggested_action=restart failed component
+2025-10-09-06:44:00 report_generator.py 15 ERROR Data ingestion lag beyond 30s threshold | root_cause=resource_exhaustion; suggested_action=increase CPU/memory limits
+2025-10-09-06:44:02 anomaly_detector.py 16 ERROR Starting network assurance bootstrap sequence | root_cause=OOM_kill; suggested_action=validate VNFM health
+2025-10-09-06:44:08 vim_connector.py 17 DEBUG VNF/CNF registration completed successfully
+2025-10-09-06:44:14 alarm_manager.py 18 DEBUG ALARM: packet_loss=0.6% detected on fronthaul
+2025-10-09-06:44:20 main.py 19 ERROR Anomaly score raised to 0.68 due to jitter increase | root_cause=network_jitter; suggested_action=increase CPU/memory limits
+2025-10-09-06:44:26 main.py 20 ERROR VNFM connectivity established successfully | root_cause=resource_exhaustion; suggested_action=analyze VIM node utilization
+2025-10-09-06:44:32 config_loader.py 21 WARN System stability confirmed, SLA compliance 99.5% | root_cause=node_unavailable; suggested_action=analyze VIM node utilization
+2025-10-09-06:44:36 config_loader.py 22 ERROR ALARM: CPU utilization sustained >90% | root_cause=node_unavailable; suggested_action=inspect network path
+2025-10-09-06:44:42 anomaly_detector.py 23 ERROR Resource allocation requested from VIM cluster | root_cause=network_jitter; suggested_action=restart failed component
+2025-10-09-06:44:48 metrics_collector.py 24 INFO Activating assurance components for data collection
+2025-10-09-06:44:50 metrics_collector.py 25 INFO Persisting incident data to assurance DB
+2025-10-09-06:44:52 vim_connector.py 26 WARN Scaling additional VNF/CNF instance for load balance | root_cause=network_jitter; suggested_action=increase CPU/memory limits
+2025-10-09-06:44:56 main.py 27 INFO ALARM: CPU utilization sustained >90%
+2025-10-09-06:44:58 alarm_manager.py 28 INFO NWDAF event trigger delay detected
+2025-10-09-06:45:00 remediation_engine.py 29 DEBUG ALARM: CPU utilization sustained >90%
+2025-10-09-06:45:04 main.py 30 WARN Resource allocation requested from VIM cluster | root_cause=node_unavailable; suggested_action=inspect network path
+2025-10-09-06:45:07 vim_connector.py 31 DEBUG Loaded configuration and SLA templates
+2025-10-09-06:45:11 anomaly_detector.py 32 WARN Scaling additional VNF/CNF instance for load balance | root_cause=node_unavailable; suggested_action=increase CPU/memory limits
+2025-10-09-06:45:15 anomaly_detector.py 33 DEBUG Starting network assurance bootstrap sequence
+2025-10-09-06:45:20 vim_connector.py 34 INFO System stability confirmed, SLA compliance 99.5%
+2025-10-09-06:45:24 vnfm_client.py 35 DEBUG ALARM: CPU utilization sustained >90%
+2025-10-09-06:45:30 vnfm_client.py 36 INFO Archived log and metric snapshots
+2025-10-09-06:45:34 vim_connector.py 37 WARN Deploying assurance VNFs/CNFs via orchestrator | root_cause=node_unavailable; suggested_action=analyze VIM node utilization
+2025-10-09-06:45:36 anomaly_detector.py 38 DEBUG metrics collected: latency=25ms throughput=210Mbps packet_loss=0.02%
+2025-10-09-06:45:39 remediation_engine.py 39 INFO Persisting incident data to assurance DB
+2025-10-09-06:45:43 main.py 40 WARN Data ingestion lag beyond 30s threshold | root_cause=node_unavailable; suggested_action=inspect network path
+2025-10-09-06:45:47 report_generator.py 41 WARN Activating assurance components for data collection | root_cause=resource_exhaustion; suggested_action=analyze VIM node utilization
+2025-10-09-06:45:50 metrics_collector.py 42 INFO Starting network assurance bootstrap sequence
+2025-10-09-06:45:56 data_ingestor.py 43 ERROR ALARM: packet_loss=0.6% detected on fronthaul | root_cause=resource_exhaustion; suggested_action=increase CPU/memory limits
+2025-10-09-06:45:58 report_generator.py 44 INFO ALARM: resource pool near exhaustion
+2025-10-09-06:46:02 main.py 45 DEBUG Activating assurance components for data collection
+2025-10-09-06:46:04 vnfm_client.py 46 ERROR NWDAF event trigger delay detected | root_cause=network_jitter; suggested_action=analyze VIM node utilization
+2025-10-09-06:46:10 main.py 47 INFO Data ingestion lag beyond 30s threshold
+2025-10-09-06:46:14 vnfm_client.py 48 WARN NWDAF event trigger delay detected | root_cause=resource_exhaustion; suggested_action=analyze VIM node utilization
+2025-10-09-06:46:19 anomaly_detector.py 49 ERROR NWDAF event trigger delay detected | root_cause=network_jitter; suggested_action=increase CPU/memory limits
+2025-10-09-06:46:22 main.py 50 INFO Archived log and metric snapshots
+2025-10-09-06:46:24 anomaly_detector.py 51 INFO ALARM: latency exceeded 40ms SLA limit
+2025-10-09-06:46:29 anomaly_detector.py 52 ERROR metrics collected: latency=25ms throughput=210Mbps packet_loss=0.02% | root_cause=node_unavailable; suggested_action=inspect network path
+2025-10-09-06:46:32 alarm_manager.py 53 DEBUG ALARM: CPU utilization sustained >90%
+2025-10-09-06:46:36 config_loader.py 54 WARN ALARM: packet_loss=0.6% detected on fronthaul | root_cause=timeout_exceeded; suggested_action=analyze VIM node utilization
+2025-10-09-06:46:39 vnfm_client.py 55 INFO System recovered, performance within SLA
+2025-10-09-06:46:43 metrics_collector.py 56 ERROR Resource allocation requested from VIM cluster | root_cause=timeout_exceeded; suggested_action=inspect network path
+2025-10-09-06:46:45 config_loader.py 57 ERROR System recovered, performance within SLA | root_cause=node_unavailable; suggested_action=analyze VIM node utilization
+2025-10-09-06:46:51 alarm_manager.py 58 ERROR NWDAF event trigger delay detected | root_cause=OOM_kill; suggested_action=validate VNFM health
+2025-10-09-06:46:55 main.py 59 INFO Persisting incident data to assurance DB
+2025-10-09-06:46:59 remediation_engine.py 60 INFO Restart initiated for failed pod instances
+2025-10-09-06:47:05 config_loader.py 61 ERROR VIM node reports insufficient resources for pod scheduling | root_cause=OOM_kill; suggested_action=validate VNFM health
+2025-10-09-06:47:08 vim_connector.py 62 WARN High memory utilization (85%) observed in metrics collector | root_cause=network_jitter; suggested_action=analyze VIM node utilization
+2025-10-09-06:47:11 alarm_manager.py 63 INFO Resource allocation requested from VIM cluster
+2025-10-09-06:47:13 remediation_engine.py 64 WARN System recovered, performance within SLA | root_cause=node_unavailable; suggested_action=analyze VIM node utilization
+2025-10-09-06:47:15 alarm_manager.py 65 INFO VNF/CNF registration completed successfully
+2025-10-09-06:47:21 config_loader.py 66 INFO ALARM: packet_loss=0.6% detected on fronthaul
+2025-10-09-06:47:24 main.py 67 DEBUG Activation timeout detected in VNFM client
+2025-10-09-06:47:28 report_generator.py 68 INFO Anomaly score raised to 0.68 due to jitter increase
+2025-10-09-06:47:33 anomaly_detector.py 69 INFO Persisting incident data to assurance DB
+2025-10-09-06:47:37 data_ingestor.py 70 DEBUG Loaded configuration and SLA templates
+2025-10-09-06:47:41 data_ingestor.py 71 INFO Loaded configuration and SLA templates
+2025-10-09-06:47:47 main.py 72 DEBUG Persisting incident data to assurance DB
+2025-10-09-06:47:53 main.py 73 ERROR Persisting incident data to assurance DB | root_cause=node_unavailable; suggested_action=analyze VIM node utilization
+2025-10-09-06:47:56 report_generator.py 74 DEBUG Archived log and metric snapshots
+2025-10-09-06:47:58 remediation_engine.py 75 WARN Starting network assurance bootstrap sequence | root_cause=timeout_exceeded; suggested_action=analyze VIM node utilization
+2025-10-09-06:48:02 data_ingestor.py 76 ERROR ALARM: CPU utilization sustained >90% | root_cause=timeout_exceeded; suggested_action=analyze VIM node utilization
+2025-10-09-06:48:05 remediation_engine.py 77 INFO Activation timeout detected in VNFM client
+2025-10-09-06:48:11 alarm_manager.py 78 WARN Activation timeout detected in VNFM client | root_cause=resource_exhaustion; suggested_action=analyze VIM node utilization
+2025-10-09-06:48:16 metrics_collector.py 79 ERROR ALARM: latency exceeded 40ms SLA limit | root_cause=OOM_kill; suggested_action=restart failed component
+2025-10-09-06:48:20 metrics_collector.py 80 ERROR NWDAF event trigger delay detected | root_cause=OOM_kill; suggested_action=increase CPU/memory limits
+2025-10-09-06:48:25 report_generator.py 81 INFO NWDAF event trigger delay detected
+2025-10-09-06:48:30 remediation_engine.py 82 INFO VIM node reports insufficient resources for pod scheduling
+2025-10-09-06:48:34 vnfm_client.py 83 INFO High memory utilization (85%) observed in metrics collector
+2025-10-09-06:48:40 vnfm_client.py 84 DEBUG Policy action executed to adjust resource limits
+2025-10-09-06:48:45 vnfm_client.py 85 WARN ALARM: resource pool near exhaustion | root_cause=timeout_exceeded; suggested_action=validate VNFM health
+2025-10-09-06:48:50 alarm_manager.py 86 ERROR High memory utilization (85%) observed in metrics collector | root_cause=timeout_exceeded; suggested_action=analyze VIM node utilization
+2025-10-09-06:48:53 vim_connector.py 87 DEBUG Policy action executed to adjust resource limits
+2025-10-09-06:48:56 main.py 88 DEBUG Policy action executed to adjust resource limits
+2025-10-09-06:49:01 remediation_engine.py 89 DEBUG VIM node reports insufficient resources for pod scheduling
+2025-10-09-06:49:05 anomaly_detector.py 90 INFO Resource allocation requested from VIM cluster
+2025-10-09-06:49:10 vnfm_client.py 91 INFO Service discovery via Consul completed
+2025-10-09-06:49:12 config_loader.py 92 ERROR ALARM: packet_loss=0.6% detected on fronthaul | root_cause=node_unavailable; suggested_action=inspect network path
+2025-10-09-06:49:14 data_ingestor.py 93 WARN Loaded configuration and SLA templates | root_cause=network_jitter; suggested_action=inspect network path
+2025-10-09-06:49:16 alarm_manager.py 94 DEBUG High memory utilization (85%) observed in metrics collector
+2025-10-09-06:49:21 metrics_collector.py 95 INFO Starting network assurance bootstrap sequence
+2025-10-09-06:49:27 anomaly_detector.py 96 INFO Anomaly score raised to 0.68 due to jitter increase
+2025-10-09-06:49:33 report_generator.py 97 INFO Persisting incident data to assurance DB
+2025-10-09-06:49:37 report_generator.py 98 INFO Deploying assurance VNFs/CNFs via orchestrator
+2025-10-09-06:49:43 main.py 99 DEBUG VIM node reports insufficient resources for pod scheduling
+2025-10-09-06:49:47 remediation_engine.py 100 WARN Anomaly score raised to 0.68 due to jitter increase | root_cause=OOM_kill; suggested_action=restart failed component
+2025-10-09-06:49:49 alarm_manager.py 101 ERROR metrics collected: latency=25ms throughput=210Mbps packet_loss=0.02% | root_cause=resource_exhaustion; suggested_action=increase CPU/memory limits
+2025-10-09-06:49:52 remediation_engine.py 102 WARN Activating assurance components for data collection | root_cause=node_unavailable; suggested_action=inspect network path
+2025-10-09-06:49:57 metrics_collector.py 103 DEBUG Persisting incident data to assurance DB
+2025-10-09-06:50:00 report_generator.py 104 ERROR Deploying assurance VNFs/CNFs via orchestrator | root_cause=OOM_kill; suggested_action=restart failed component
+2025-10-09-06:50:06 config_loader.py 105 INFO System stability confirmed, SLA compliance 99.5%
+2025-10-09-06:50:12 remediation_engine.py 106 WARN Restart initiated for failed pod instances | root_cause=network_jitter; suggested_action=analyze VIM node utilization
+2025-10-09-06:50:15 report_generator.py 107 INFO Restart initiated for failed pod instances
+2025-10-09-06:50:20 data_ingestor.py 108 INFO VNF/CNF registration completed successfully
+2025-10-09-06:50:26 remediation_engine.py 109 INFO Activation timeout detected in VNFM client
+2025-10-09-06:50:31 data_ingestor.py 110 INFO Activating assurance components for data collection
+2025-10-09-06:50:36 config_loader.py 111 INFO VNFM connectivity established successfully
+2025-10-09-06:50:38 config_loader.py 112 INFO Persisting incident data to assurance DB
+2025-10-09-06:50:43 anomaly_detector.py 113 ERROR Starting network assurance bootstrap sequence | root_cause=network_jitter; suggested_action=restart failed component
+2025-10-09-06:50:47 main.py 114 INFO metrics collected: latency=25ms throughput=210Mbps packet_loss=0.02%
+2025-10-09-06:50:51 alarm_manager.py 115 ERROR metrics collected: latency=25ms throughput=210Mbps packet_loss=0.02% | root_cause=timeout_exceeded; suggested_action=analyze VIM node utilization
+2025-10-09-06:50:53 report_generator.py 116 INFO Activating assurance components for data collection
+2025-10-09-06:50:58 config_loader.py 117 INFO ALARM: resource pool near exhaustion
+2025-10-09-06:51:04 data_ingestor.py 118 INFO Scaling additional VNF/CNF instance for load balance
+2025-10-09-06:51:07 main.py 119 INFO metrics collected: latency=25ms throughput=210Mbps packet_loss=0.02%
+2025-10-09-06:51:09 metrics_collector.py 120 INFO VIM node reports insufficient resources for pod scheduling

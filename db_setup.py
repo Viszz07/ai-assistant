@@ -7,6 +7,9 @@ from pathlib import Path
 from sentence_transformers import SentenceTransformer
 import pandas as pd
 
+# Import network assurance knowledge base
+from network_assurance_kb import NETWORK_ASSURANCE_KNOWLEDGE, get_component_context, analyze_query_intent
+
 class DatabaseSetup:
     """
     Sets up SQLite database for structured log storage and ChromaDB for vector embeddings.
@@ -32,7 +35,7 @@ class DatabaseSetup:
         self.sqlite_conn = sqlite3.connect(self.db_path)
         cursor = self.sqlite_conn.cursor()
         
-        # Create logs table
+        # Create logs table with enhanced schema for network assurance
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,6 +45,8 @@ class DatabaseSetup:
                 severity TEXT NOT NULL,
                 message TEXT NOT NULL,
                 log_file_source TEXT NOT NULL,
+                component TEXT,
+                module TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -50,6 +55,8 @@ class DatabaseSetup:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON logs(timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_severity ON logs(severity)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_filename ON logs(filename)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_component ON logs(component)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_module ON logs(module)')
         
         self.sqlite_conn.commit()
         print("SQLite database setup completed!")
@@ -82,13 +89,36 @@ class DatabaseSetup:
         match = re.match(pattern, log_line.strip())
         if match:
             timestamp, filename, line_number, severity, message = match.groups()
+
+            # Extract module from filename
+            module = filename.split('.')[0].lower() if '.' in filename else filename.lower()
+
+            # Determine component based on log source file name and content
+            component = "Unknown"
+            message_upper = message.upper()
+
+            # Check source file for component hints
+            if '4g' in source_file.lower():
+                component = "4G Core"
+            elif '5g' in source_file.lower():
+                component = "5G RAN"
+
+            # Enhance component detection from message content using knowledge base
+            for net_type, net_info in NETWORK_ASSURANCE_KNOWLEDGE["network_components"].items():
+                for comp in net_info["components"]:
+                    if comp in message_upper:
+                        component = net_type.replace("_", " ").title()
+                        break
+
             return {
                 'timestamp': timestamp,
                 'filename': filename,
                 'line_number': int(line_number),
                 'severity': severity,
                 'message': message,
-                'log_file_source': source_file
+                'log_file_source': source_file,
+                'component': component,
+                'module': module
             }
         return None
     
@@ -98,15 +128,17 @@ class DatabaseSetup:
         
         for entry in log_entries:
             cursor.execute('''
-                INSERT INTO logs (timestamp, filename, line_number, severity, message, log_file_source)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO logs (timestamp, filename, line_number, severity, message, log_file_source, component, module)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 entry['timestamp'],
                 entry['filename'],
                 entry['line_number'],
                 entry['severity'],
                 entry['message'],
-                entry['log_file_source']
+                entry['log_file_source'],
+                entry['component'],
+                entry['module']
             ))
         
         self.sqlite_conn.commit()
@@ -133,7 +165,9 @@ class DatabaseSetup:
                 'filename': entry['filename'],
                 'line_number': entry['line_number'],
                 'severity': entry['severity'],
-                'log_file_source': entry['log_file_source']
+                'log_file_source': entry['log_file_source'],
+                'component': entry['component'],
+                'module': entry['module']
             }
             metadatas.append(metadata)
             
@@ -220,6 +254,14 @@ class DatabaseSetup:
         cursor.execute("SELECT log_file_source, COUNT(*) FROM logs GROUP BY log_file_source")
         file_stats = cursor.fetchall()
         
+        # Component distribution
+        cursor.execute("SELECT component, COUNT(*) FROM logs GROUP BY component ORDER BY COUNT(*) DESC")
+        component_stats = cursor.fetchall()
+        
+        # Module distribution
+        cursor.execute("SELECT module, COUNT(*) FROM logs GROUP BY module ORDER BY COUNT(*) DESC")
+        module_stats = cursor.fetchall()
+        
         print("\n" + "="*50)
         print("DATABASE SUMMARY")
         print("="*50)
@@ -229,6 +271,16 @@ class DatabaseSetup:
         for severity, count in severity_stats:
             percentage = (count / total_count) * 100
             print(f"  {severity}: {count} ({percentage:.1f}%)")
+        
+        print("\nComponent Distribution:")
+        for component, count in component_stats:
+            percentage = (count / total_count) * 100
+            print(f"  {component}: {count} ({percentage:.1f}%)")
+        
+        print("\nModule Distribution:")
+        for module, count in module_stats:
+            percentage = (count / total_count) * 100
+            print(f"  {module}: {count} ({percentage:.1f}%)")
         
         print("\nFile Distribution:")
         for filename, count in file_stats:

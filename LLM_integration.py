@@ -237,184 +237,237 @@ class LLMIntegration:
     
     def generate_safe_response(self, query: str, context: str, conversation_history: str = "") -> str:
         """
-        Generate response using Gemini API with safety guardrails.
+        Generate concise, visually appealing responses for network assurance queries.
         """
-        # Create a comprehensive prompt with guardrails and structured output
-        system_prompt = """You are a log analysis assistant. Your role is to analyze the provided log context and answer ONLY using that context.
+        # Create a concise prompt that produces shorter, more focused responses
+        system_prompt = """You are a Network Assurance Expert AI. Provide **concise, actionable insights** about network systems and logs.
 
-GUARDRAILS:
-1. Only answer questions related to the provided log data and the user's query.
-2. Base your response EXCLUSIVELY on the log entries provided in CONTEXT.
-3. DO NOT paste raw log lines in the output. Summarize insights instead.
-4. If the question cannot be answered from the logs, provide a contextual response based on what's actually available in the logs.
-5. Avoid assumptions and generic advice that are not grounded in the context.
+**Response Style Guidelines:**
+- **Keep it brief**: 200-400 words max, focus on key insights only
+- **Complete responses**: Always finish your response completely, never cut off mid-sentence
+- **Visual & Scannable**: Use emojis, bold text, charts and bar graphs whenever necessary,bullet points, and simple tables
+- **Action-oriented**: Prioritize actionable information over lengthy explanations
+- **Context-aware**: Reference conversation history when relevant
 
-OUTPUT FORMAT (use these exact section headings):
-### **Root Cause / Main Issue** (Short, precise explanation of what caused the issue.)
-### **Analysis** (A detailed breakdown of patterns, trends, and observations.)
-### **Solution** (Specific, actionable steps to resolve or mitigate the problem.)
-### **Summary** (Short, precise explanation)
-
-For root cause analysis queries, focus on identifying the primary cause and provide structured analysis.
-For solution requests, provide specific, actionable steps based on the error patterns observed.
-For top errors requests, list and categorize errors with clear prioritization.
-
-When analyzing logs, consider patterns across different error types, frequencies, and time periods to provide comprehensive insights.
-
-CONTEXT (Log Entries):
+**Context Available:**
 {context}
 
-CONVERSATION HISTORY (previous Q&A context):
+**Previous Conversation:**
 {conversation_history}
 
-USER QUERY: {query}
+**Query:** {query}
 
-RESPONSE REQUIREMENTS:
-- Provide a structured response using the exact section headings specified.
-- After the Summary section, add a "Suggested Follow-ups" section with 2-3 relevant questions that can be answered based on the available log data.
-- Make sure follow-up questions are specific and can be answered with the current dataset.
-- Enhance responses with visual elements where appropriate:
-  - Use markdown tables for comparing data or showing distributions
-  - Include progress bars or visual indicators for metrics (e.g., [████████░░] 80%)
-  - Add color-coded severity indicators (🔴 ERROR, 🟡 WARN, 🔵 INFO, ⚫ DEBUG)
-  - Use bullet points with emojis for better readability (✅, ⚠️, 📊, etc.)
-  - Include simple ASCII charts for trends when relevant
+**Response Structure (Choose based on query type):**
 
-VISUAL ENHANCEMENT EXAMPLES:
-- For error counts: Create a simple bar chart using markdown
-- For severity distribution: Show as a visual breakdown
-- For trends: Use arrows (↗️ ↘️) to indicate increases/decreases
-- For status: Use status indicators (🟢 Healthy, 🟡 Warning, 🔴 Critical)
+**For LOG ANALYSIS:**
+🔍 **Key Issue:** [1-sentence summary]
+📊 **Impact:** [Visual breakdown - use simple bars like ERROR: 20% | WARN: 5%]
+✅ **Quick Fix:** [2-3 bullet points max]
 
-IMPORTANT VISUAL GUIDELINES:
-- Keep visual bars SHORT (max 10-15 characters)
-- Use clean, minimal formatting
-- Focus on clarity over decoration
-- Avoid overly long or repetitive visual elements
-- Use simple progress indicators: [████████░░░░] 80%
-- DO NOT create extremely long visual bars like [🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴░░░░░░░░░░]
-- For percentages, use concise format: ERROR: 10% | WARN: 6% | INFO: 54% | DEBUG: 30%"""
+**For EXPLANATIONS:**
+📚 **[Topic]:** [Brief definition - 1 sentence]
+🎯 **Key Points:** [3-5 bullet points max]
+💡 **Relevance:** [How it connects to logs - 1 sentence]
+
+**For COMPARISONS:**
+⚖️ **Comparison:** [Simple table or bullets]
+📈 **Key Difference:** [1 sentence highlight]
+
+**MANDATORY: Always end with EXACTLY 3 specific follow-up questions.**
+**MANDATORY: Always try to create bar graphs, charts o visually applealing response possible.**
+
+**Examples of Good Responses:**
+- "🔍 **Network Congestion:** High packet loss detected in core network components. 📊 **Impact:** ERROR: 15% | WARN: 8% | INFO: 77%. ✅ **Quick Fix:** • Check bandwidth allocation • Review QoS policies • Scale VNF instances.**❓ **Follow-ups:** • What specific components show the highest packet loss? • How has network performance trended over the last week? • Can you show me the VNF deployment status?**"
+- "📚 **MME (Mobility Management Entity):** Core 4G component handling user authentication and mobility. 🎯 **Key Points:** • Manages UE connections • Handles handovers • Tracks user location. 💡 **Relevance:** Your logs show MME authentication failures affecting user connectivity.**❓ **Follow-ups:** • Show me MME error patterns • Explain AMF vs MME differences • What VNFs are currently deployed for MME?**"
+
+**CRITICAL REQUIREMENTS:**
+- ALWAYS complete your entire response and include follow-up questions
+- Generate EXACTLY 3 follow-up questions, numbered 1, 2, and 3.
+- Each follow-up question must be specific and answerable from the available data
+- Never cut off mid-response or mid-question"""
 
         prompt = system_prompt.format(context=context, query=query, conversation_history=conversation_history)
-        
+
         try:
             response = self.model.generate_content(prompt)
             response_text = response.text
-            
-            # Clean up overly long visual bars that make the output messy
-            # Replace extremely long visual bars with concise format
-            response_text = re.sub(
-                r'(\w+):\s*\d+%\s*\[([^\]]{20,})\]',  # Pattern for long visual bars
-                r'\1: \2%',  # Replace with just percentage and emoji count
-                response_text
-            )
-            
-            # Fix any remaining messy visual elements
-            response_text = re.sub(
-                r'\[([^\]]{30,})\]',  # Very long bracketed content
-                r'[\1]',  # Keep but truncate if too long
-                response_text
-            )
-            
+
+            # Ensure response is complete (remove excessive truncation)
+            if len(response_text) > 2000:
+                # Find a good breaking point at the end of a sentence
+                last_period = response_text.rfind('.')
+                if last_period > 1000:
+                    response_text = response_text[:last_period + 1]
+                else:
+                    response_text = response_text[:2000] + "..."
+
+            # Ensure follow-up questions are complete
+            if "❓" in response_text:
+                # Find the last question mark to ensure completeness
+                last_question = response_text.rfind('?')
+                if last_question > 0 and last_question < len(response_text) - 50:
+                    # Check if response ends abruptly after a question
+                    after_last_question = response_text[last_question + 1:].strip()
+                    if len(after_last_question) < 10 and not after_last_question.endswith('.'):
+                        # Response might be cut off, don't truncate
+                        pass
+                elif last_question == -1:
+                    # No question marks found, ensure we have a complete response
+                    if not response_text.endswith('.'):
+                        response_text += "."
+
             return response_text
-        
+
         except Exception as e:
-            return f"Error generating response: {str(e)}"
+            return f"❌ Error: {str(e)}"
+
+    def generate_visual_log_summary(self, logs_data):
+        """Generate visual summary of log data with charts and graphs"""
+        if not logs_data:
+            return ""
+
+        # Analyze severity distribution
+        severity_counts = {}
+        component_counts = {}
+        module_counts = {}
+
+        for log in logs_data:
+            # Count severities
+            severity = log.get('severity', 'INFO')
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+
+            # Count components
+            component = log.get('component', 'Unknown')
+            component_counts[component] = component_counts.get(component, 0) + 1
+
+            # Count modules
+            module = log.get('module', 'Unknown')
+            module_counts[module] = module_counts.get(module, 0) + 1
+
+    def generate_visual_log_summary(self, logs_data):
+        """Generate concise visual summary of log data"""
+        if not logs_data:
+            return ""
+
+        # Analyze severity distribution
+        severity_counts = {}
+        component_counts = {}
+
+        for log in logs_data:
+            # Count severities
+            severity = log.get('severity', 'INFO')
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+
+            # Count components
+            component = log.get('component', 'Unknown')
+            component_counts[component] = component_counts.get(component, 0) + 1
+
+        # Create concise visual elements
+        visual_summary = ""
+
+        # Simple severity overview
+        if severity_counts:
+            total = sum(severity_counts.values())
+            error_pct = (severity_counts.get('ERROR', 0) / total) * 100
+            warn_pct = (severity_counts.get('WARN', 0) / total) * 100
+
+            visual_summary += f"\n📊 **Status:** 🔴 {error_pct:.0f}% errors | 🟡 {warn_pct:.0f}% warnings"
+
+        # Most active component (if significant)
+        if component_counts:
+            top_comp = max(component_counts.items(), key=lambda x: x[1])
+            if top_comp[1] > 1:  # Only show if meaningful activity
+                visual_summary += f"\n🏆 **Most Active:** {top_comp[0]} ({top_comp[1]} events)"
+
+        return visual_summary
+
+    def create_ascii_bar_chart(self, data_dict, title="", max_bar_length=12):
+        """Create an ASCII bar chart from a dictionary of values"""
+        if not data_dict:
+            return ""
+
+        # Find max value for scaling
+        max_value = max(data_dict.values()) if data_dict else 1
+
+        chart = f"\n{title}\n" if title else "\n"
+        for label, value in sorted(data_dict.items(), key=lambda x: x[1], reverse=True):
+            # Scale the bar length
+            bar_length = int((value / max_value) * max_bar_length)
+            bar = "█" * bar_length + "░" * (max_bar_length - bar_length)
+            chart += f"{label:8s} {bar} ({value})\n"
+
+        return chart
+
+    def create_trend_chart(self, time_series_data, title=""):
+        """Create a trend chart with time series data"""
+        if not time_series_data:
+            return ""
+
+        chart = f"\n{title}\n" if title else "\n"
+
+        for time_point, (value, trend) in time_series_data.items():
+            # Scale bar length based on value
+            max_value = max(v[0] for v in time_series_data.values()) if time_series_data else 1
+            bar_length = int((value / max_value) * 10) if max_value > 0 else 0
+            bar = "█" * bar_length + "░" * (10 - bar_length)
+
+            trend_emoji = "↗️" if trend == "up" else "↘️" if trend == "down" else "➡️"
+            trend_text = "(increasing)" if trend == "up" else "(decreasing)" if trend == "down" else "(stable)"
+
+            chart += f"{time_point:5s} {bar} {trend_emoji} {trend_text}\n"
+
+        return chart
+
+    def create_progress_bar(self, percentage, label="", bar_length=12):
+        """Create a progress bar for percentages"""
+        filled_length = int((percentage / 100) * bar_length)
+        bar = "█" * filled_length + "░" * (bar_length - filled_length)
+        return f"{label:12s} [{bar}] {percentage:.1f}%"
     
-    def process_query(self, query: str, conversation_history: str = "") -> Dict[str, Any]:
+    def process_query_with_history(self, query: str, conversation_history: str = "") -> Dict[str, Any]:
         """
-        Main method to process user queries with full RAG pipeline.
+        Process user queries with conversation history context.
         """
         # Step 1: Check if query is log-related (guardrail)
         if not self.is_log_related_query(query):
             return {
-                'response': "I can only answer questions based on the log data provided. Your query doesn't seem to relate to log analysis or system troubleshooting.",
+                'response': "I can only answer questions related to network assurance, logs, or telecom systems. Please ask about network components, service flows, or log analysis.",
                 'relevant_logs': [],
                 'context_used': False
             }
 
         # Step 2: Retrieve relevant logs using vector search
-        relevant_logs = self.get_relevant_logs_from_vector_db(query, n_results=50)  # Increased from 15 to 50
+        relevant_logs = self.get_relevant_logs_from_vector_db(query, n_results=30)
 
-        # Step 3: Enhanced fallback strategy - if vector search doesn't find enough, try broader approaches
+        # Step 3: Build context with conversation history
         context = self.build_context_from_logs(relevant_logs, query)
-        used_fallback = False
 
-        # If vector search found very few results, try broader approaches
-        if len(relevant_logs) < 3 or (context.strip() == "No relevant logs found for this query."):
-            # Fallback 1: Get recent ERROR and WARN logs
-            fallback_logs = self.get_logs_by_severity('ERROR', 50) + self.get_logs_by_severity('WARN', 50)  # Increased from 20 to 50
-            if fallback_logs:
-                fallback_context = self.build_context_from_logs(fallback_logs[:60], query + " (recent errors and warnings)")  # Increased from 30 to 60
-                if fallback_context and fallback_context != "No relevant logs found for this query.":
-                    context = fallback_context
-                    used_fallback = True
-
-            # Fallback 2: If still no good results, get a broader set of recent logs
-            if not used_fallback or len(relevant_logs) < 2:
-                try:
-                    cur = self.sqlite_conn.cursor()
-                    cur.execute("""
-                        SELECT timestamp, filename, line_number, severity, message
-                        FROM logs
-                        WHERE timestamp >= datetime('now', '-24 hours')
-                        ORDER BY timestamp DESC
-                        LIMIT 100  # Increased from 50 to 100 for more comprehensive data
-                    """)
-                    recent_rows = cur.fetchall()
-                    if recent_rows:
-                        lines = ["Recent logs (last 24 hours) for context:"]
-                        for i, row in enumerate(recent_rows, 1):
-                            ts, fn, ln, sev, msg = row
-                            short_msg = (msg[:140] + '…') if len(msg) > 140 else msg
-                            lines.append(f"{i}. [{ts}] {sev} in {fn}:{ln} — {short_msg}")
-                        context = "\n".join(lines)
-                        used_fallback = True
-                except Exception:
-                    pass
-
-        # Step 4: Generate response using Gemini API
+        # Step 4: Generate response with conversation context
         response = self.generate_safe_response(query, context, conversation_history)
 
-        # Check if response indicates insufficient data and enhance it
-        if "I don't have enough information" in response:
-            # Get actual statistics to provide better context
-            stats = self.get_log_statistics()
+        # Enhance response with visual elements if we have relevant logs
+        if relevant_logs and len(relevant_logs) > 0:
+            visual_summary = self.generate_visual_log_summary(relevant_logs)
 
-            # Enhanced handling for specific query types
-            query_lower = query.lower()
+            # Insert visual summary into response if it doesn't already contain visual elements
+            if visual_summary and "📊" not in response and len(response) < 1000:
+                # Find a good place to insert the visual summary (after the first section)
+                lines = response.split('\n')
+                insert_index = 0
 
-            # Handle root cause requests
-            if any(term in query_lower for term in ['root cause', 'cause of', 'why', 'reason']):
-                error_logs = self.get_logs_by_severity('ERROR', 20)  # Increased from 10 to 20
-                if error_logs:
-                    response = self._generate_root_cause_analysis(error_logs, stats)
-                else:
-                    response = "No ERROR logs found. The system appears to be running without critical issues that require root cause analysis."
+                # Find the first major section break
+                for i, line in enumerate(lines):
+                    if line.startswith('###') and i > 0:
+                        insert_index = i + 1
+                        break
 
-            # Handle top errors requests
-            elif 'top' in query_lower and any(term in query_lower for term in ['error', 'warning', 'issue']):
-                response = self._generate_top_errors_response(stats, query_lower)
-
-            # Handle solution requests
-            elif any(term in query_lower for term in ['solution', 'fix', 'resolve', 'how to']):
-                error_logs = self.get_logs_by_severity('ERROR', 20)  # Increased from 10 to 20
-                if error_logs:
-                    response = self._generate_solutions_response(error_logs, stats)
-                else:
-                    response = "No errors found that require solutions. The system appears to be stable."
-
-            # Handle general statistics
-            elif stats['total_logs'] < 10:
-                response = f"I have access to {stats['total_logs']} total logs. Here's what I can tell you about the system:\n\n"
-                response += "**Log Distribution:**\n"
-                for severity, count in stats['severity_distribution'].items():
-                    percentage = (count / stats['total_logs'] * 100) if stats['total_logs'] > 0 else 0
-                    response += f"• {severity}: {count} ({percentage:.1f}%)\n"
+                if insert_index > 0:
+                    lines.insert(insert_index, visual_summary)
+                    response = '\n'.join(lines)
 
         return {
             'response': response,
-            'relevant_logs': relevant_logs[:5],  # Return top 5 for display
+            'relevant_logs': relevant_logs[:5],
             'context_used': len(relevant_logs) > 0,
             'total_logs_found': len(relevant_logs)
         }

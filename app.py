@@ -14,6 +14,9 @@ import shutil
 import re
 import json
 
+# Import network assurance knowledge base
+from network_assurance_kb import NETWORK_ASSURANCE_KNOWLEDGE, get_component_context, analyze_query_intent
+
 # Load environment variables from a .env file if present
 load_dotenv()
 
@@ -323,102 +326,79 @@ class LogAnalysisApp:
     def render_chat_tab(self):
         """Render the Chat Assistant tab"""
         st.markdown('<div class="tab-header">🤖 AI-Powered Chat Assistant</div>', unsafe_allow_html=True)
-        
+
         if not st.session_state.db_initialized:
             st.info("No data available yet. Please use the sidebar to ingest logs (generate or upload) to get started.")
             return
-        
+
         # Load LLM integration
         llm = self.load_llm_integration()
         if not llm:
             return
-        
+
         # Chat interface
         st.markdown("Ask questions about your logs, such as:")
         st.markdown("- *What are the most common errors?*")
-        
+        st.markdown("- *Explain the boot sequence of the 5G RAN*")
+        st.markdown("- *What is MME and what does it do?*")
+
         # Chat input at the top
-        user_input = st.chat_input("Ask a question about your logs...")
+        user_input = st.chat_input("Ask a question about your network logs...")
         if user_input:
-            # Add user message to chat history
+            # Analyze query intent
+            query_intent = analyze_query_intent(user_input)
+
+            # Process query and get response
+            with st.spinner("🔍 Analyzing logs..."):
+                response = self.process_query_with_context(user_input, llm, query_intent)
+
+            # Add both user message and assistant response to chat history
             st.session_state.chat_history.append({"role": "user", "content": user_input})
-            
-            # Process query with LLM (always structured output)
-            try:
-                with st.spinner("Analyzing logs and generating response..."):
-                    style_guide = (
-                        "Please answer in this exact structure using Markdown headings and short bullet lists:\n"
-                        "### **Root Cause / Main Issue** (Short, precise explanation of what caused the issue.)\n"
-                        "### **Analysis** (A detailed breakdown of patterns, trends, and observations.)\n"
-                        "### **Solution** (Specific, actionable steps to resolve or mitigate the problem.)\n"
-                        "### **Summary** (Short, precise explanation)\n"
-                        "Use **bold** for section headings and keep content concise."
-                    )
-                    composed_query = f"{style_guide}\n\nUser question: {user_input}"
-                    result = llm.process_query(composed_query)
-                # Add assistant response to chat history (no raw logs shown)
-                st.session_state.chat_history.append({
-                    "role": "assistant", 
-                    "content": result.get('response', '')
-                })
-                
-                # Contextual visuals inline (based on query intent)
-                keywords = [
-                    'error','warn','distribution','trend','spike','top','most',
-                    'frequency','chart','graph','pie','timeline','count','rate'
-                ]
-                if any(k in user_input.lower() for k in keywords):
-                    try:
-                        conn = self.get_database_connection()
-                        df_vis = pd.read_sql_query("SELECT * FROM logs", conn)
-                        conn.close()
-                        if not df_vis.empty:
-                            df_vis['timestamp'] = pd.to_datetime(df_vis['timestamp'], format='%Y-%m-%d-%H:%M:%S', errors='coerce')
-                            cutoff = datetime.now() - timedelta(hours=24)
-                            df_24 = df_vis[df_vis['timestamp'] >= cutoff]
-                            st.markdown("---")
-                            st.markdown("### Visual context (last 24h)")
-                            v1, v2 = st.columns(2)
-                            with v1:
-                                sev_counts = df_24['severity'].value_counts()
-                                if not sev_counts.empty:
-                                    fig_pie = px.pie(values=sev_counts.values, names=sev_counts.index, title="Severity Distribution")
-                                    st.plotly_chart(fig_pie, width='stretch')
-                                else:
-                                    st.info("No data in last 24h for severity distribution.")
-                            with v2:
-                                if not df_24.empty:
-                                    df_24['hour'] = df_24['timestamp'].dt.floor('h')
-                                    tdata = df_24.groupby(['hour', 'severity']).size().reset_index(name='count')
-                                    fig_line = px.line(tdata, x='hour', y='count', color='severity', title="Events Over Time")
-                                    st.plotly_chart(fig_line, width='stretch')
-                                else:
-                                    st.info("No events in last 24h to show timeline.")
-                    except Exception:
-                        pass
-            except Exception as e:
-                st.session_state.chat_history.append({
-                    "role": "assistant",
-                    "content": f"Encountered an error while generating a response: {e}"
-                })
+            st.session_state.chat_history.append({"role": "assistant", "content": response})
+
+            # Show contextual visuals based on query intent
+            if response and not response.startswith("❌ Error"):
+                if any(k in user_input.lower() for k in [
+                    'error','warn','issue','problem','failure','alarm','critical'
+                ]):
+                    self.render_error_correlation_analysis()
+                elif any(k in user_input.lower() for k in [
+                    'flow','sequence','process','boot','initialization','monitoring','recovery'
+                ]):
+                    self.render_service_flow_visualization()
+                elif any(k in user_input.lower() for k in [
+                    'component','MME','SGW','AMF','SMF','VNF','CNF','network'
+                ]):
+                    self.render_component_interaction_view()
+                elif any(k in user_input.lower() for k in [
+                    'trend','pattern','timeline','over time','evolution'
+                ]):
+                    self.render_advanced_timeline_analysis()
+                elif any(k in user_input.lower() for k in [
+                    'performance','latency','throughput','metrics','kpi'
+                ]):
+                    self.render_performance_analysis()
+
+            # Clear the input and rerun once
+            st.session_state.user_input = ""
             st.rerun()
-        
+
         # Display chat history in reverse order (newest first)
         for message in reversed(st.session_state.chat_history):
             if message["role"] == "user":
                 with st.chat_message("user"):
-                    st.write(message["content"]) 
+                    st.write(message["content"])
             else:
                 with st.chat_message("assistant"):
                     st.markdown(message.get("content", ""))
-        
+
         # Quick actions row at the bottom
         qa_col1, qa_col2 = st.columns([1,1])
         with qa_col1:
             if st.button("🧾 Summarize Current Logs"):
                 try:
                     with st.spinner("Generating summary from current logs..."):
-                        summary = llm.get_error_summary()
+                        summary = self.process_query_with_context("Summarize the current logs", llm, "log_analysis")
                     st.session_state.chat_history.append({
                         "role": "assistant",
                         "content": summary
@@ -525,66 +505,627 @@ class LogAnalysisApp:
         
         # Timeline chart
         st.subheader("Error Distribution Over Time")
-        
+
         # Group by hour for timeline
         df['hour'] = df['timestamp'].dt.floor('h')
         timeline_data = df.groupby(['hour', 'severity']).size().reset_index(name='count')
-        
-        fig_timeline = px.line(
-            timeline_data,
-            x='hour',
-            y='count',
-            color='severity',
-            title="Log Events Over Time",
-            color_discrete_map={
-                'ERROR': '#e53e3e',
-                'WARN': '#dd6b20',
-                'INFO': '#38a169',
-                'DEBUG': '#3182ce'
-            }
-        )
-        st.plotly_chart(fig_timeline, width='stretch')
+
+        # Debug information and error handling
+        st.info(f"📊 Timeline data: {len(timeline_data)} data points from {len(df)} total logs across {df['hour'].nunique()} time periods")
+
+        if timeline_data.empty:
+            st.info("📈 No timeline data available. Charts will appear as data is collected over multiple time periods.")
+        elif len(timeline_data) < 3:
+            st.info(f"📈 Limited timeline data ({len(timeline_data)} points). Need more data points across different time periods for meaningful trend visualization.")
+        else:
+            try:
+                fig_timeline = px.line(
+                    timeline_data,
+                    x='hour',
+                    y='count',
+                    color='severity',
+                    title="Log Events Over Time (Hourly Aggregation)",
+                    color_discrete_map={
+                        'ERROR': '#e53e3e',
+                        'WARN': '#dd6b20',
+                        'INFO': '#38a169',
+                        'DEBUG': '#3182ce'
+                    }
+                )
+                fig_timeline.update_layout(
+                    xaxis_title="Time (Hourly)",
+                    yaxis_title="Event Count",
+                    showlegend=True
+                )
+                st.plotly_chart(fig_timeline, use_container_width=True)
+
+                # Show additional insights
+                try:
+                    time_span_hours = (df['hour'].max() - df['hour'].min()).total_seconds() / 3600
+                    st.info(f"📊 **Timeline Insights:** Data spans {df['hour'].min().strftime('%H:%M')} to {df['hour'].max().strftime('%H:%M')} ({time_span_hours:.1f} hours)")
+                except:
+                    st.info(f"📊 **Timeline Insights:** Data spans {df['hour'].nunique()} unique time periods")
+
+            except Exception as chart_error:
+                st.error(f"📈 Chart rendering error: {str(chart_error)}")
+                st.info("This might be due to insufficient data variety or timestamp formatting issues.")
         
         # Recent critical issues
         st.subheader("🚨 Recent Critical Issues")
         recent_errors = df[df['severity'] == 'ERROR'].sort_values('timestamp', ascending=False).head(5)
-        
-        for _, row in recent_errors.iterrows():
-            st.markdown(f"""
-            <div class="error-card">
-                <strong>{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}</strong> | 
-                <code>{row['filename']}:{row['line_number']}</code><br>
-                {row['message']}
-            </div>
-            """, unsafe_allow_html=True)
+
+        if recent_errors.empty:
+            st.info("✅ **System Health:** No critical errors found in the current dataset. All systems appear to be running smoothly!")
+        else:
+            for _, row in recent_errors.iterrows():
+                st.markdown(f"""
+                <div class="error-card">
+                    <strong>{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}</strong> |
+                    <code>{row['filename']}:{row['line_number']}</code><br>
+                    {row['message']}
+                </div>
+                """, unsafe_allow_html=True)
         
         conn.close()
-    
+
+    def process_query_with_context(self, user_input, llm, query_intent):
+        """Process user query with network assurance context and conversation history"""
+        try:
+            # Get conversation history from session state
+            conversation_history = self.get_conversation_history()
+
+            # Get relevant logs from database
+            conn = self.get_database_connection()
+
+            # Use semantic search if available, otherwise use text search
+            try:
+                # Try semantic search first
+                relevant_logs = self.get_semantic_search_results(user_input, conn)
+            except Exception:
+                # Fallback to text search
+                relevant_logs = self.get_text_search_results(user_input, conn)
+
+            conn.close()
+
+            # Generate context-aware prompt
+            if query_intent == "log_analysis":
+                # For log-specific questions, include log data and flow context
+                prompt = self.generate_log_analysis_prompt(user_input, relevant_logs)
+            elif query_intent == "flow_explanation":
+                # For flow questions, focus on service flow knowledge
+                prompt = self.generate_flow_explanation_prompt(user_input, relevant_logs)
+            else:
+                # For general network assurance questions, use knowledge base
+                prompt = self.generate_general_knowledge_prompt(user_input, relevant_logs)
+
+            # Process through LLM with conversation history
+            result = llm.process_query_with_history(prompt, conversation_history)
+
+            return result.get('response', '')
+
+        except Exception as e:
+            return f"❌ Error processing query: {str(e)}"
+
+    def get_conversation_history(self):
+        """Get conversation history for context"""
+        if not st.session_state.chat_history:
+            return ""
+
+        # Get last 5 exchanges (10 messages) for context
+        recent_messages = st.session_state.chat_history[-10:]
+
+        history = "CONVERSATION HISTORY:\n"
+        for i, msg in enumerate(recent_messages):
+            role = "USER" if msg["role"] == "user" else "ASSISTANT"
+            history += f"{role}: {msg['content']}\n"
+
+        return history
+
+    def get_semantic_search_results(self, query, conn, limit=10):
+        """Get relevant logs using semantic search"""
+        try:
+            from chromadb.utils import embedding_functions
+            from chromadb.config import Settings
+            import chromadb
+
+            # Initialize ChromaDB client
+            chroma_client = chromadb.PersistentClient(path="./chroma_db")
+            collection = chroma_client.get_collection("log_embeddings")
+
+            # Get similar logs using semantic search
+            results = collection.query(
+                query_texts=[query],
+                n_results=limit
+            )
+
+            # Get log IDs from results
+            log_ids = [id_ for id_list in results.get('ids', []) for id_ in id_list]
+
+            # Get full log entries from SQLite
+            placeholders = ','.join(['?'] * len(log_ids))
+            cursor = conn.cursor()
+            cursor.execute(f"""
+                SELECT * FROM logs
+                WHERE id IN ({placeholders})
+                ORDER BY timestamp DESC
+            """, log_ids)
+
+            return cursor.fetchall()
+
+        except Exception as e:
+            raise Exception(f"Semantic search failed: {str(e)}")
+
+    def get_text_search_results(self, query, conn, limit=10):
+        """Get relevant logs using text search"""
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM logs
+            WHERE message LIKE ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (f"%{query}%", limit))
+        return cursor.fetchall()
+
+    def generate_log_analysis_prompt(self, query, relevant_logs):
+        """Generate prompt for log analysis questions"""
+        # Prepare log context
+        log_context = ""
+        if relevant_logs:
+            log_context = "\n".join([
+                f"[{row[1]}] [{row[4]}] [{row[8]}] {row[5]}"  # timestamp, severity, module, message
+                for row in relevant_logs[:5]  # Limit to top 5 logs
+            ])
+
+        return f"""
+You are a Network Assurance Expert AI. Use your knowledge of network assurance systems and the provided log data to answer questions.
+
+Network Components:
+- 4G Core: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['network_components']['4g_core']['components'])}
+- 5G RAN: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['network_components']['5g_ran']['components'])}
+
+Service Flow:
+1. Boot/Initialization: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['service_flow']['boot_initialization'])}
+2. Active Monitoring: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['service_flow']['active_monitoring'])}
+3. Recovery/Optimization: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['service_flow']['recovery_optimization'])}
+
+Relevant Logs:
+{log_context}
+
+Question: {query}
+
+Please analyze the logs and provide a comprehensive answer considering:
+- The network assurance flow and component relationships
+- Specific issues mentioned in the logs
+- Patterns and trends in the data
+- Recommendations for resolution
+
+Structure your response with clear headings and bullet points.
+"""
+
+    def generate_flow_explanation_prompt(self, query, relevant_logs):
+        """Generate prompt for flow explanation questions"""
+        return f"""
+You are a Network Assurance Expert AI. Explain the network assurance service flow and processes.
+
+Service Flow:
+1. Boot/Initialization: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['service_flow']['boot_initialization'])}
+2. Active Monitoring: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['service_flow']['active_monitoring'])}
+3. Recovery/Optimization: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['service_flow']['recovery_optimization'])}
+
+Network Components:
+- 4G Core: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['network_components']['4g_core']['components'])}
+- 5G RAN: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['network_components']['5g_ran']['components'])}
+
+Question: {query}
+
+Please explain the requested aspect of the network assurance flow, using specific examples from the logs where relevant.
+"""
+
+    def generate_general_knowledge_prompt(self, query, relevant_logs):
+        """Generate prompt for general network assurance questions"""
+        return f"""
+You are a Network Assurance Expert AI. Answer general questions about network assurance systems.
+
+Network Components:
+- 4G Core: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['network_components']['4g_core']['components'])}
+- 5G RAN: {', '.join(NETWORK_ASSURANCE_KNOWLEDGE['network_components']['5g_ran']['components'])}
+
+Component Details:
+{chr(10).join([f"- {k}: {v}" for k, v in NETWORK_ASSURANCE_KNOWLEDGE['component_details'].items()])}
+
+Question: {query}
+
+Please provide a comprehensive explanation of the requested network assurance concept or component.
+"""
+    def render_error_correlation_analysis(self):
+        """Render error correlation and impact analysis visualization"""
+        try:
+            conn = self.get_database_connection()
+            df = pd.read_sql_query("SELECT * FROM logs WHERE severity IN ('ERROR', 'WARN')", conn)
+            conn.close()
+
+            if df.empty:
+                st.info("📊 No errors or warnings found for correlation analysis.")
+                return
+
+            df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y-%m-%d-%H:%M:%S', errors='coerce')
+            cutoff = datetime.now() - timedelta(hours=24)
+            df_recent = df[df['timestamp'] >= cutoff]
+
+            if df_recent.empty:
+                st.info("📊 No recent errors or warnings for correlation analysis.")
+                return
+
+            st.markdown("---")
+            st.markdown("### 🔍 Error Correlation & Impact Analysis")
+
+            # Error frequency by module
+            col1, col2 = st.columns(2)
+
+            with col1:
+                module_errors = df_recent.groupby(['module', 'severity']).size().reset_index(name='count')
+                if not module_errors.empty:
+                    fig = px.bar(
+                        module_errors,
+                        x='module',
+                        y='count',
+                        color='severity',
+                        title="Error Distribution by Module",
+                        color_discrete_map={'ERROR': '#e53e3e', 'WARN': '#dd6b20'}
+                    )
+                    fig.update_layout(xaxis_title="Module", yaxis_title="Count")
+                    st.plotly_chart(fig, use_container_width=True)
+
+            with col2:
+                # Error timeline with pattern detection
+                df_recent['hour'] = df_recent['timestamp'].dt.floor('h')
+                timeline_data = df_recent.groupby(['hour', 'severity']).size().reset_index(name='count')
+
+                if not timeline_data.empty:
+                    fig = px.line(
+                        timeline_data,
+                        x='hour',
+                        y='count',
+                        color='severity',
+                        title="Error Timeline (Last 24h)",
+                        markers=True,
+                        color_discrete_map={'ERROR': '#e53e3e', 'WARN': '#dd6b20'}
+                    )
+                    fig.update_layout(xaxis_title="Time", yaxis_title="Error Count")
+                    st.plotly_chart(fig, use_container_width=True)
+
+            # Error correlation heatmap (component vs module)
+            st.markdown("#### 🔗 Component-Module Error Correlation")
+            correlation_data = df_recent.groupby(['component', 'module']).size().reset_index(name='error_count')
+
+            if len(correlation_data) > 1:
+                # Create a pivot table for heatmap
+                pivot = correlation_data.pivot(index='component', columns='module', values='error_count').fillna(0)
+
+                if not pivot.empty:
+                    fig = px.imshow(
+                        pivot,
+                        text_auto=True,
+                        aspect="auto",
+                        title="Error Correlation Heatmap",
+                        color_continuous_scale="Reds"
+                    )
+                    fig.update_layout(xaxis_title="Module", yaxis_title="Component")
+                    st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"Error rendering correlation analysis: {str(e)}")
+
+    def render_service_flow_visualization(self):
+        """Render service flow progress and component interactions"""
+        try:
+            conn = self.get_database_connection()
+            df = pd.read_sql_query("SELECT * FROM logs", conn)
+            conn.close()
+
+            if df.empty:
+                st.info("📊 No data available for service flow visualization.")
+                return
+
+            df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y-%m-%d-%H:%M:%S', errors='coerce')
+            cutoff = datetime.now() - timedelta(hours=12)
+            df_recent = df[df['timestamp'] >= cutoff]
+
+            st.markdown("---")
+            st.markdown("### 🔄 Service Flow Progress & Component Interactions")
+
+            # Component activity over time
+            col1, col2 = st.columns(2)
+
+            with col1:
+                # Module activity timeline
+                df_recent['minute'] = df_recent['timestamp'].dt.floor('10min')  # 10-minute intervals
+                activity_data = df_recent.groupby(['minute', 'module']).size().reset_index(name='activity_count')
+
+                if not activity_data.empty:
+                    # Get top 5 most active modules
+                    top_modules = activity_data.groupby('module')['activity_count'].sum().nlargest(5).index
+                    filtered_data = activity_data[activity_data['module'].isin(top_modules)]
+
+                    fig = px.line(
+                        filtered_data,
+                        x='minute',
+                        y='activity_count',
+                        color='module',
+                        title="Module Activity Over Time",
+                        markers=True
+                    )
+                    fig.update_layout(xaxis_title="Time", yaxis_title="Activity Count")
+                    st.plotly_chart(fig, use_container_width=True)
+
+            with col2:
+                # Component interaction network
+                component_activity = df_recent.groupby(['component', 'severity']).size().reset_index(name='count')
+
+                if not component_activity.empty:
+                    fig = px.treemap(
+                        component_activity,
+                        path=['component'],
+                        values='count',
+                        color='severity',
+                        title="Component Activity Distribution",
+                        color_discrete_map={'ERROR': '#e53e3e', 'WARN': '#dd6b20', 'INFO': '#38a169', 'DEBUG': '#3182ce'}
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"Error rendering service flow visualization: {str(e)}")
+
+    def render_component_interaction_view(self):
+        """Render component interaction and network topology view"""
+        try:
+            conn = self.get_database_connection()
+            df = pd.read_sql_query("SELECT * FROM logs WHERE component != 'Unknown'", conn)
+            conn.close()
+
+            if df.empty:
+                st.info("📊 No component data available for interaction analysis.")
+                return
+
+            df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y-%m-%d-%H:%M:%S', errors='coerce')
+            cutoff = datetime.now() - timedelta(hours=24)
+            df_recent = df[df['timestamp'] >= cutoff]
+
+            st.markdown("---")
+            st.markdown("### 🌐 Component Interaction & Network Topology")
+
+            # Component activity radar chart
+            component_stats = df_recent.groupby(['component', 'severity']).size().reset_index(name='count')
+
+            if not component_stats.empty:
+                # Create radar chart data
+                components = component_stats['component'].unique()
+
+                fig = go.Figure()
+
+                colors = {'ERROR': '#e53e3e', 'WARN': '#dd6b20', 'INFO': '#38a169', 'DEBUG': '#3182ce'}
+
+                for severity in component_stats['severity'].unique():
+                    severity_data = component_stats[component_stats['severity'] == severity]
+
+                    # Create mapping for radar chart
+                    values = []
+                    for comp in components:
+                        count = severity_data[severity_data['component'] == comp]['count'].iloc[0] if comp in severity_data['component'].values else 0
+                        values.append(count)
+
+                    fig.add_trace(go.Scatterpolar(
+                        r=values,
+                        theta=components,
+                        fill='toself',
+                        name=severity,
+                        line=dict(color=colors.get(severity, '#3182ce'))
+                    ))
+
+                fig.update_layout(
+                    polar=dict(radialaxis=dict(visible=True)),
+                    title="Component Activity Radar",
+                    showlegend=True
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"Error rendering component interaction view: {str(e)}")
+
+    def render_advanced_timeline_analysis(self):
+        """Render advanced timeline with insights and pattern detection"""
+        try:
+            conn = self.get_database_connection()
+            df = pd.read_sql_query("SELECT * FROM logs", conn)
+            conn.close()
+
+            if df.empty:
+                st.info("📊 No data available for timeline analysis.")
+                return
+
+            df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y-%m-%d-%H:%M:%S', errors='coerce')
+            cutoff = datetime.now() - timedelta(hours=48)
+            df_recent = df[df['timestamp'] >= cutoff]
+
+            st.markdown("---")
+            st.markdown("### 📈 Advanced Timeline Analysis with Insights")
+
+            if not df_recent.empty:
+                # Multi-level timeline with different granularities
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    # Hourly aggregation
+                    df_recent['hour'] = df_recent['timestamp'].dt.floor('h')
+                    hourly_data = df_recent.groupby(['hour', 'severity']).size().reset_index(name='count')
+
+                    fig = px.area(
+                        hourly_data,
+                        x='hour',
+                        y='count',
+                        color='severity',
+                        title="Event Distribution by Hour",
+                        color_discrete_map={'ERROR': '#e53e3e', 'WARN': '#dd6b20', 'INFO': '#38a169', 'DEBUG': '#3182ce'}
+                    )
+                    fig.update_layout(xaxis_title="Time", yaxis_title="Event Count")
+                    st.plotly_chart(fig, use_container_width=True)
+
+                with col2:
+                    # Pattern detection - show potential issues
+                    error_spikes = self.detect_error_spikes(df_recent)
+
+                    if error_spikes:
+                        st.markdown("#### 🚨 Detected Error Patterns:")
+                        for spike in error_spikes:
+                            st.markdown(f"""
+                            <div style='background-color: #fff5f5; padding: 10px; border-radius: 5px; margin: 5px 0; border-left: 4px solid #e53e3e;'>
+                                <strong>Spike Detected:</strong> {spike['module']} - {spike['count']} errors in {spike['timeframe']}
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.info("✅ No significant error spikes detected in the analysis period.")
+
+        except Exception as e:
+            st.error(f"Error rendering advanced timeline analysis: {str(e)}")
+
+    def render_performance_analysis(self):
+        """Render performance trends and anomaly detection"""
+        try:
+            conn = self.get_database_connection()
+            df = pd.read_sql_query("SELECT * FROM logs", conn)
+            conn.close()
+
+            if df.empty:
+                st.info("📊 No data available for performance analysis.")
+                return
+
+            df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y-%m-%d-%H:%M:%S', errors='coerce')
+            cutoff = datetime.now() - timedelta(hours=24)
+            df_recent = df[df['timestamp'] >= cutoff]
+
+            st.markdown("---")
+            st.markdown("### ⚡ Performance Trends & Anomaly Detection")
+
+            # Performance metrics extraction and visualization
+            col1, col2 = st.columns(2)
+
+            with col1:
+                # Module performance over time
+                df_recent['minute'] = df_recent['timestamp'].dt.floor('5min')
+                performance_data = df_recent.groupby(['minute', 'module']).size().reset_index(name='activity')
+
+                if not performance_data.empty:
+                    # Calculate rolling average for trend detection
+                    performance_data = performance_data.sort_values('minute')
+                    performance_data['rolling_avg'] = performance_data.groupby('module')['activity'].rolling(window=3, min_periods=1).mean().reset_index(0, drop=True)
+
+                    fig = px.line(
+                        performance_data,
+                        x='minute',
+                        y=['activity', 'rolling_avg'],
+                        color='module',
+                        title="Module Performance Trends",
+                        markers=True
+                    )
+                    fig.update_layout(xaxis_title="Time", yaxis_title="Activity Level")
+                    st.plotly_chart(fig, use_container_width=True)
+
+            with col2:
+                # Anomaly detection based on activity patterns
+                if not performance_data.empty:
+                    # Simple anomaly detection - points above 2 standard deviations
+                    stats = performance_data.groupby('module')['activity'].agg(['mean', 'std']).reset_index()
+
+                    anomalies = []
+                    for _, row in performance_data.iterrows():
+                        module_stats = stats[stats['module'] == row['module']]
+                        if not module_stats.empty:
+                            mean_val = module_stats.iloc[0]['mean']
+                            std_val = module_stats.iloc[0]['std']
+                            if row['activity'] > mean_val + (2 * std_val):
+                                anomalies.append({
+                                    'module': row['module'],
+                                    'timestamp': row['minute'],
+                                    'activity': row['activity'],
+                                    'threshold': mean_val + (2 * std_val)
+                                })
+
+                    if anomalies:
+                        anomaly_df = pd.DataFrame(anomalies)
+                        fig = px.scatter(
+                            anomaly_df,
+                            x='timestamp',
+                            y='activity',
+                            color='module',
+                            title="Detected Performance Anomalies",
+                            size='activity',
+                            hover_data=['threshold']
+                        )
+                        fig.update_layout(xaxis_title="Time", yaxis_title="Activity Level")
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        st.markdown("#### 🚨 Performance Anomalies Detected:")
+                        for anomaly in anomalies[:5]:  # Show top 5
+                            st.markdown(f"""
+                            <div style='background-color: #fff3cd; padding: 8px; border-radius: 4px; margin: 3px 0; border-left: 3px solid #ffc107;'>
+                                <strong>{anomaly['module']}</strong> at {anomaly['timestamp'].strftime('%H:%M')} - Activity: {anomaly['activity']} (threshold: {anomaly['threshold']:.1f})
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.info("✅ No significant performance anomalies detected.")
+
+        except Exception as e:
+            st.error(f"Error rendering performance analysis: {str(e)}")
+
+    def detect_error_spikes(self, df, window_minutes=30, threshold_multiplier=3):
+        """Detect error spikes in the data"""
+        spikes = []
+
+        # Group by module and time windows
+        df['time_window'] = df['timestamp'].dt.floor(f'{window_minutes}min')
+
+        for module in df['module'].unique():
+            module_data = df[df['module'] == module]
+            window_counts = module_data.groupby('time_window').size()
+
+            if not window_counts.empty:
+                mean_count = window_counts.mean()
+                std_count = window_counts.std()
+
+                for window, count in window_counts.items():
+                    if count > mean_count + (threshold_multiplier * std_count):
+                        spikes.append({
+                            'module': module,
+                            'timeframe': f"{window.strftime('%H:%M')}-{window.strftime('%H:%M')}",
+                            'count': count
+                        })
+
+        return sorted(spikes, key=lambda x: x['count'], reverse=True)
+
     def render_table_tab(self):
-        """Render the Error Frequency Table tab"""
         st.markdown('<div class="tab-header">📋 Error Frequency Table</div>', unsafe_allow_html=True)
-        
+
         if not st.session_state.db_initialized or not os.path.exists(self.db_path):
             st.info("No data available yet. Please ingest logs from the sidebar to view and filter log entries.")
             return
-        
+
         try:
             conn = self.get_database_connection()
         except Exception as e:
             st.error(f"Error connecting to database: {str(e)}")
             st.info("Please ingest logs from the sidebar.")
             return
-        
+
         # Filters
         col1, col2, col3, col4 = st.columns(4)
-        
+
         with col1:
             severity_filter = st.multiselect(
                 "Filter by Severity",
                 options=['ERROR', 'WARN', 'INFO', 'DEBUG'],
                 default=['ERROR', 'WARN']
             )
-        
+
         with col2:
             # Get unique filenames
             try:
@@ -597,7 +1138,7 @@ class LogAnalysisApp:
                 options=filename_options,
                 default=[]
             )
-        
+
         with col3:
             search_term = st.text_input("Search in Messages", "")
 
@@ -631,25 +1172,25 @@ class LogAnalysisApp:
                 except Exception:
                     start_dt = None
                     end_dt = None
-        
+
         # Build query based on filters
         query = "SELECT * FROM logs WHERE 1=1"
         params = []
-        
+
         if severity_filter:
             placeholders = ','.join(['?' for _ in severity_filter])
             query += f" AND severity IN ({placeholders})"
             params.extend(severity_filter)
-        
+
         if filename_filter:
             placeholders = ','.join(['?' for _ in filename_filter])
             query += f" AND filename IN ({placeholders})"
             params.extend(filename_filter)
-        
+
         if search_term:
             query += " AND message LIKE ?"
             params.append(f"%{search_term}%")
-        
+
         # Time-based filters
         if limit_mode == "Last X hours" and hours_back is not None:
             cutoff = datetime.now() - timedelta(hours=int(hours_back))
@@ -672,7 +1213,7 @@ class LogAnalysisApp:
         if limit_mode == "Recent N" and n_limit is not None:
             query += " LIMIT ?"
             params.append(int(n_limit))
-        
+
         # Load filtered data
         try:
             df = pd.read_sql_query(query, conn, params=params)
@@ -681,19 +1222,19 @@ class LogAnalysisApp:
             st.info("Please ingest logs from the sidebar.")
             conn.close()
             return
-        
+
         # Display results count
         st.info(f"Found {len(df)} log entries matching your filters")
-        
+
         if len(df) > 0:
             # Format timestamp for better display
             df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y-%m-%d-%H:%M:%S')
             df['formatted_timestamp'] = df['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
-            
+
             # Display table
             display_df = df[['formatted_timestamp', 'filename', 'line_number', 'severity', 'message', 'log_file_source']]
             display_df.columns = ['Timestamp', 'Filename', 'Line', 'Severity', 'Message', 'Source File']
-            
+
             # Color code severity
             def color_severity(val):
                 if val == 'ERROR':
@@ -705,10 +1246,10 @@ class LogAnalysisApp:
                 elif val == 'DEBUG':
                     return 'background-color: #f7fafc; color: #3182ce'
                 return ''
-            
+
             styled_df = display_df.style.map(color_severity, subset=['Severity'])
             st.dataframe(styled_df, use_container_width=True, height=600)
-            
+
             # Download button
             csv = df.to_csv(index=False)
             st.download_button(
@@ -717,7 +1258,7 @@ class LogAnalysisApp:
                 file_name=f"filtered_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv"
             )
-        
+
         conn.close()
     
     def run(self):
