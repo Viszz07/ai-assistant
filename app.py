@@ -337,10 +337,7 @@ class LogAnalysisApp:
             return
 
         # Chat interface
-        st.markdown("Ask questions about your logs, such as:")
-        st.markdown("- *What are the most common errors?*")
-        st.markdown("- *Explain the boot sequence of the 5G RAN*")
-        st.markdown("- *What is MME and what does it do?*")
+        st.markdown("Ask questions about your logs :")
 
         # Chat input at the top
         user_input = st.chat_input("Ask a question about your network logs...")
@@ -478,6 +475,16 @@ class LogAnalysisApp:
                     'INFO': '#38a169',
                     'DEBUG': '#3182ce'
                 }
+            )
+            # Position legend very close to the pie chart and at the top
+            fig_pie.update_layout(
+                legend=dict(
+                    orientation="v",
+                    yanchor="top",
+                    y=0.95,
+                    xanchor="left",
+                    x=0.7
+                )
             )
             st.plotly_chart(fig_pie, width='stretch')
         
@@ -1279,19 +1286,25 @@ Please provide a comprehensive explanation of the requested network assurance co
             display_df = df[['formatted_timestamp', 'filename', 'line_number', 'severity', 'message', 'log_file_source']]
             display_df.columns = ['Timestamp', 'Filename', 'Line', 'Severity', 'Message', 'Source File']
 
-            # Color code severity
+            # Color code severity and messages for ERROR and WARN only
             def color_severity(val):
                 if val == 'ERROR':
                     return 'background-color: #fff5f5; color: #e53e3e; font-weight: bold'
                 elif val == 'WARN':
                     return 'background-color: #fffbf0; color: #dd6b20; font-weight: bold'
-                elif val == 'INFO':
-                    return 'background-color: #f0fff4; color: #38a169'
-                elif val == 'DEBUG':
-                    return 'background-color: #f7fafc; color: #3182ce'
+                # INFO and DEBUG get normal styling (no special colors)
                 return ''
 
-            styled_df = display_df.style.map(color_severity, subset=['Severity'])
+            def color_message_by_severity(row):
+                severity = row['Severity']
+                if severity == 'ERROR':
+                    return ['', '', '', '', 'color: #e53e3e; font-weight: bold', '']
+                elif severity == 'WARN':
+                    return ['', '', '', '', 'color: #dd6b20; font-weight: bold', '']
+                # INFO and DEBUG messages get normal styling
+                return ['', '', '', '', '', '']
+
+            styled_df = display_df.style.map(color_severity, subset=['Severity']).apply(color_message_by_severity, axis=1)
             st.dataframe(styled_df, use_container_width=True, height=600)
 
             # Download button

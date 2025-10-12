@@ -273,7 +273,7 @@ class LLMIntegration:
 ⚖️ **Comparison:** [Simple table or bullets]
 📈 **Key Difference:** [1 sentence highlight]
 
-**MANDATORY: Always end with EXACTLY 3 specific follow-up questions.**
+**MANDATORY: Always end with EXACTLY 2 specific follow-up questions.**
 **MANDATORY: Always try to create bar graphs, charts or visually appealing response possible.**
 **Preferred Visual Elements:**
 - **Bar charts**: For comparing error counts across components
@@ -295,7 +295,7 @@ class LLMIntegration:
 ❓ **Follow-ups**
 1. Question 1
 2. Question 2
-3. Question 3
+
 ```
 
 **Examples of Good Visual Responses:**
@@ -329,7 +329,7 @@ SMF  ███████ 7
 
 **CRITICAL REQUIREMENTS:**
 - ALWAYS complete your entire response and include follow-up questions
-- Generate EXACTLY 3 follow-up questions, numbered 1, 2, and 3.
+- Generate EXACTLY 3 follow-up questions, numbered 1, 2
 - Each follow-up question must be specific and answerable from the available data
 - Never cut off mid-response or mid-question"""
 
