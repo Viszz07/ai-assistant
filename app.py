@@ -268,7 +268,7 @@ class LogAnalysisApp:
                             st.warning(f"ChromaDB reset warning: {e}")
 
                         st.session_state.ingest_message = "✅ Soft reset complete. Databases are empty; please ingest logs."
-                        st.session_state.db_initialized = os.path.exists(self.db_path)
+                        st.session_state.db_initialized = False  # Set to False since database is now empty
                         st.session_state.chat_history = []
                         st.success("Soft reset complete.")
                     except Exception as e:
@@ -327,8 +327,28 @@ class LogAnalysisApp:
         """Render the Chat Assistant tab"""
         st.markdown('<div class="tab-header">🤖 AI-Powered Chat Assistant</div>', unsafe_allow_html=True)
 
-        if not st.session_state.db_initialized:
+        # Check if database is initialized AND has actual data
+        if not st.session_state.db_initialized or not os.path.exists(self.db_path):
             st.info("No data available yet. Please use the sidebar to ingest logs (generate or upload) to get started.")
+            return
+        
+        # Additional check: verify database has actual log data
+        try:
+            conn = self.get_database_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM logs")
+            log_count = cursor.fetchone()[0]
+            conn.close()
+            
+            if log_count == 0:
+                st.info("📝 Database is empty. Please ingest logs from the sidebar to start using the chat assistant.")
+                st.markdown("**Available options:**")
+                st.markdown("- 🎲 **Generate Sample Logs**: Create synthetic network logs for testing")
+                st.markdown("- 📁 **Upload Log Files**: Upload your own .log or .txt files")
+                return
+        except Exception as e:
+            st.error(f"Error checking database: {str(e)}")
+            st.info("Please ingest logs from the sidebar to get started.")
             return
 
         # Load LLM integration
@@ -505,27 +525,75 @@ class LogAnalysisApp:
                     y='Filename',
                     orientation='h',
                     title="Top Files with Errors/Warnings",
-                    labels={'Count': 'Count', 'Filename': 'Filename'}
+                    labels={'Count': 'Count', 'Filename': 'Filename'},
+                    color_discrete_sequence=['#D2691E']  # Orange/brown color - very different from pie chart
                 )
-                fig_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
+                fig_bar.update_layout(
+                    yaxis=dict(
+                        categoryorder='total ascending',
+                        title_font=dict(color='#000000', size=14),  # Pure black
+                        tickfont=dict(color='#000000', size=12)  # Black filename labels
+                    ),
+                    font=dict(color='#000000', size=12),  # Pure black font
+                    xaxis=dict(
+                        title_font=dict(color='#000000', size=14),  # Black axis title
+                        tickfont=dict(color='#000000', size=12)  # Black count labels
+                    ),
+                    title_font=dict(color='#000000', size=16)  # Black title
+                )
+                # Make bar text pure black and show values
+                fig_bar.update_traces(
+                    textfont=dict(color='#000000', size=12, family='Arial Black'),
+                    textposition='outside',
+                    texttemplate='%{x}',  # Show count values on bars
+                    marker=dict(line=dict(color='#000000', width=1))  # Black border for bars
+                )
                 st.plotly_chart(fig_bar, width='stretch')
         
-        # Timeline chart
+        # Timeline chart with time-based approach selector
         st.subheader("Error Distribution Over Time")
-
-        # Group by hour for timeline
-        df['hour'] = df['timestamp'].dt.floor('h')
-        timeline_data = df.groupby(['hour', 'severity']).size().reset_index(name='count')
+        
+        # Time period selector
+        col_time1, col_time2 = st.columns([2, 3])
+        with col_time1:
+            time_period = st.selectbox(
+                "Select Time Period:",
+                options=['Second', 'Minute', 'Hour', 'Day', 'Week', 'Month'],
+                index=1,  # Default to Minute
+                key="time_period_selector"
+            )
+        
+        with col_time2:
+            # Add some vertical spacing to align with the selectbox
+            st.write("")  # Empty line for spacing
+            st.info(f"📅 Showing error trends aggregated by {time_period.lower()}")
+        
+        # Group by selected time period
+        if time_period == 'Second':
+            df['time_group'] = df['timestamp'].dt.floor('s')
+            time_format = '%H:%M:%S\n%m-%d'
+        elif time_period == 'Minute':
+            df['time_group'] = df['timestamp'].dt.floor('min')
+            time_format = '%H:%M\n%m-%d'
+        elif time_period == 'Hour':
+            df['time_group'] = df['timestamp'].dt.floor('h')
+            time_format = '%H:%M\n%m-%d'
+        elif time_period == 'Day':
+            df['time_group'] = df['timestamp'].dt.floor('d')
+            time_format = '%m-%d\n%Y'
+        elif time_period == 'Week':
+            df['time_group'] = df['timestamp'].dt.to_period('W').dt.start_time
+            time_format = 'Week %U\n%Y'
+        else:  # Month
+            df['time_group'] = df['timestamp'].dt.to_period('M').dt.start_time
+            time_format = '%b\n%Y'
+            
+        timeline_data = df.groupby(['time_group', 'severity']).size().reset_index(name='count')
 
         # Enhanced debug information and error handling
-        st.info(f"📊 **Timeline Analysis:** {len(timeline_data)} data points from {len(df)} total logs across {df['hour'].nunique()} time periods")
+        st.info(f"📊 **Timeline Analysis:** {len(timeline_data)} data points from {len(df)} total logs across {df['time_group'].nunique()} {time_period.lower()} periods")
 
-        # Show raw data for debugging
-        if st.checkbox("🔍 Show Timeline Debug Data", key="timeline_debug"):
-            st.write("**Raw Timeline Data:**")
-            st.dataframe(timeline_data.head(10))
-            st.write(f"**Hour Range:** {df['hour'].min()} to {df['hour'].max()}")
-            st.write(f"**Severity Counts:** {df['severity'].value_counts().to_dict()}")
+        # Debug data section removed for cleaner interface
 
         if timeline_data.empty:
             st.warning("📈 **No Timeline Data:** No data available for timeline chart. Please ensure logs are properly ingested.")
@@ -536,16 +604,16 @@ class LogAnalysisApp:
             if not timeline_data.empty:
                 st.write("**Available Data:**")
                 for _, row in timeline_data.iterrows():
-                    st.write(f"- {row['hour'].strftime('%Y-%m-%d %H:%M')}: {row['severity']} = {row['count']}")
+                    st.write(f"- {row['time_group'].strftime('%Y-%m-%d %H:%M')}: {row['severity']} = {row['count']}")
         else:
             try:
                 # Enhanced chart with better formatting
                 fig_timeline = px.line(
                     timeline_data,
-                    x='hour',
+                    x='time_group',
                     y='count',
                     color='severity',
-                    title="Log Events Over Time (Hourly Aggregation)",
+                    title=f"Log Events Over Time ({time_period}ly Aggregation)",
                     color_discrete_map={
                         'ERROR': '#e53e3e',
                         'WARN': '#dd6b20',
@@ -557,15 +625,16 @@ class LogAnalysisApp:
                 
                 # Enhanced layout with better formatting
                 fig_timeline.update_layout(
-                    xaxis_title="Time (Hourly)",
+                    xaxis_title=f"Time ({time_period}ly)",
                     yaxis_title="Event Count",
                     showlegend=True,
                     hovermode='x unified',
                     xaxis=dict(
-                        tickformat='%H:%M\n%m-%d',
+                        tickformat=time_format,
                         tickangle=45
                     ),
-                    height=400
+                    height=400,
+                    font=dict(color='#1a1a1a', size=12)  # Darker font for timeline too
                 )
                 
                 # Add grid lines for better readability
@@ -576,19 +645,37 @@ class LogAnalysisApp:
 
                 # Enhanced insights with more details
                 try:
-                    time_span_hours = (df['hour'].max() - df['hour'].min()).total_seconds() / 3600
-                    peak_hour = timeline_data.loc[timeline_data['count'].idxmax()]
+                    if time_period == 'Second':
+                        time_span = (df['time_group'].max() - df['time_group'].min()).total_seconds()
+                        time_unit = 'seconds'
+                    elif time_period == 'Minute':
+                        time_span = (df['time_group'].max() - df['time_group'].min()).total_seconds() / 60
+                        time_unit = 'minutes'
+                    elif time_period == 'Hour':
+                        time_span = (df['time_group'].max() - df['time_group'].min()).total_seconds() / 3600
+                        time_unit = 'hours'
+                    elif time_period == 'Day':
+                        time_span = (df['time_group'].max() - df['time_group'].min()).days
+                        time_unit = 'days'
+                    elif time_period == 'Week':
+                        time_span = (df['time_group'].max() - df['time_group'].min()).days / 7
+                        time_unit = 'weeks'
+                    else:  # Month
+                        time_span = (df['time_group'].max() - df['time_group'].min()).days / 30
+                        time_unit = 'months'
+                    
+                    peak_period = timeline_data.loc[timeline_data['count'].idxmax()]
                     total_events = timeline_data['count'].sum()
                     
                     st.success(f"""
                     📊 **Timeline Insights:**
-                    - **Time Span:** {df['hour'].min().strftime('%H:%M %m-%d')} to {df['hour'].max().strftime('%H:%M %m-%d')} ({time_span_hours:.1f} hours)
-                    - **Peak Activity:** {peak_hour['hour'].strftime('%H:%M %m-%d')} with {peak_hour['count']} {peak_hour['severity']} events
+                    - **Time Span:** {df['time_group'].min().strftime('%Y-%m-%d %H:%M')} to {df['time_group'].max().strftime('%Y-%m-%d %H:%M')} ({time_span:.1f} {time_unit})
+                    - **Peak Activity:** {peak_period['time_group'].strftime('%Y-%m-%d %H:%M')} with {peak_period['count']} {peak_period['severity']} events
                     - **Total Events:** {total_events} across all time periods
-                    - **Average per Hour:** {total_events / df['hour'].nunique():.1f} events
+                    - **Average per {time_period}:** {total_events / df['time_group'].nunique():.1f} events
                     """)
                 except Exception as insight_error:
-                    st.info(f"📊 **Timeline Insights:** Data spans {df['hour'].nunique()} unique time periods (insight calculation error: {str(insight_error)})")
+                    st.info(f"📊 **Timeline Insights:** Data spans {df['time_group'].nunique()} unique {time_period.lower()} periods (insight calculation error: {str(insight_error)})")
 
             except Exception as chart_error:
                 st.error(f"📈 **Chart Rendering Error:** {str(chart_error)}")
