@@ -230,17 +230,6 @@ class LLMIntegration:
         if any(word in query.lower() for word in ['overview', 'summary', 'statistics', 'how many']):
             stats = self.get_log_statistics()
             context += f"\n\nLOG STATISTICS:\n"
-            context += f"Total logs: {stats['total_logs']}\n"
-            context += f"Severity distribution: {stats['severity_distribution']}\n"
-        
-        return context
-    
-    def generate_safe_response(self, query: str, context: str, conversation_history: str = "") -> str:
-        """
-        Generate concise, visually appealing responses for network assurance queries.
-        """
-        # Create a concise prompt that produces shorter, more focused responses
-        system_prompt = """You are a Network Assurance Expert AI. Provide **concise, actionable insights** about network systems and logs.
 
 **Response Style Guidelines:**
 - **Keep it brief**: 200-400 words max, focus on key insights only

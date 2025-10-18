@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
-from LLM_integration import LLMIntegration
+from LLM_integration_streaming import LLMIntegration
 import time
 from db_setup import DatabaseSetup
 from log_generator import LogGenerator
@@ -362,19 +362,18 @@ class LogAnalysisApp:
         # Chat input at the top
         user_input = st.chat_input("Ask a question about your network logs...")
         if user_input:
+            # Add user message to chat history immediately
+            st.session_state.chat_history.append({"role": "user", "content": user_input})
+            
             # Analyze query intent
             query_intent = analyze_query_intent(user_input)
 
-            # Process query and get response
-            with st.spinner("🔍 Analyzing logs..."):
-                response = self.process_query_with_context(user_input, llm, query_intent)
-
-            # Add both user message and assistant response to chat history
-            st.session_state.chat_history.append({"role": "user", "content": user_input})
-            st.session_state.chat_history.append({"role": "assistant", "content": response})
+            # Process query with streaming response
+            self.process_streaming_query(user_input, llm, query_intent)
 
             # Show contextual visuals based on query intent
-            if response and not response.startswith("❌ Error"):
+            # Note: Contextual visuals will be shown after streaming completes
+            if True:  # Always show visuals for now
                 if any(k in user_input.lower() for k in [
                     'error','warn','issue','problem','failure','alarm','critical'
                 ]):
@@ -706,38 +705,58 @@ class LogAnalysisApp:
         
         conn.close()
 
-    def process_query_with_context(self, user_input, llm, query_intent):
-        """Process user query with network assurance context and conversation history"""
+    def process_streaming_query(self, user_input, llm, query_intent):
+        """Process user query with streaming response"""
         try:
             # Get conversation history from session state
             conversation_history = self.get_conversation_history()
 
-            # Get relevant logs from database
-            conn = self.get_database_connection()
+            # Process through LLM with streaming enabled
+            result = llm.process_query_with_history(user_input, conversation_history, stream=True)
 
-            # Use semantic search if available, otherwise use text search
-            try:
-                # Try semantic search first
-                relevant_logs = self.get_semantic_search_results(user_input, conn)
-            except Exception:
-                # Fallback to text search
-                relevant_logs = self.get_text_search_results(user_input, conn)
-
-            conn.close()
-
-            # Generate context-aware prompt
-            if query_intent == "log_analysis":
-                # For log-specific questions, include log data and flow context
-                prompt = self.generate_log_analysis_prompt(user_input, relevant_logs)
-            elif query_intent == "flow_explanation":
-                # For flow questions, focus on service flow knowledge
-                prompt = self.generate_flow_explanation_prompt(user_input, relevant_logs)
+            if result['is_streaming']:
+                # Create a placeholder for the streaming response
+                with st.chat_message("assistant"):
+                    message_placeholder = st.empty()
+                    full_response = ""
+                    
+                    # Stream the response
+                    for chunk in result['response']:
+                        full_response += chunk
+                        message_placeholder.markdown(full_response + "▌")
+                        time.sleep(0.02)  # Small delay for visual effect
+                    
+                    # Final response without cursor
+                    message_placeholder.markdown(full_response)
+                    
+                    # Add to chat history
+                    st.session_state.chat_history.append({
+                        "role": "assistant", 
+                        "content": full_response
+                    })
             else:
-                # For general network assurance questions, use knowledge base
-                prompt = self.generate_general_knowledge_prompt(user_input, relevant_logs)
+                # Fallback to non-streaming
+                response = result.get('response', '')
+                st.session_state.chat_history.append({
+                    "role": "assistant", 
+                    "content": response
+                })
+                
+        except Exception as e:
+            error_msg = f"❌ Error processing query: {str(e)}"
+            st.session_state.chat_history.append({
+                "role": "assistant", 
+                "content": error_msg
+            })
+    
+    def process_query_with_context(self, user_input, llm, query_intent):
+        """Process user query with network assurance context and conversation history (non-streaming fallback)"""
+        try:
+            # Get conversation history from session state
+            conversation_history = self.get_conversation_history()
 
-            # Process through LLM with conversation history
-            result = llm.process_query_with_history(prompt, conversation_history)
+            # Process through LLM without streaming
+            result = llm.process_query_with_history(user_input, conversation_history, stream=False)
 
             return result.get('response', '')
 
