@@ -10,6 +10,9 @@ import pandas as pd
 # Import network assurance knowledge base
 from network_assurance_kb import NETWORK_ASSURANCE_KNOWLEDGE, get_component_context, analyze_query_intent
 
+# Import exception parser
+from exception_parser import ExceptionParser
+
 class DatabaseSetup:
     """
     Sets up SQLite database for structured log storage and ChromaDB for vector embeddings.
@@ -27,6 +30,9 @@ class DatabaseSetup:
         print("Loading sentence transformer model...")
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         print("Model loaded successfully!")
+        
+        # Initialize exception parser
+        self.exception_parser = ExceptionParser()
     
     def setup_sqlite(self):
         """Initialize SQLite database and create logs table"""
@@ -35,7 +41,7 @@ class DatabaseSetup:
         self.sqlite_conn = sqlite3.connect(self.db_path)
         cursor = self.sqlite_conn.cursor()
         
-        # Create logs table with enhanced schema for network assurance
+        # Create logs table with enhanced schema for network assurance and exceptions
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,6 +53,10 @@ class DatabaseSetup:
                 log_file_source TEXT NOT NULL,
                 component TEXT,
                 module TEXT,
+                has_stack_trace INTEGER DEFAULT 0,
+                exception_type TEXT,
+                exception_language TEXT,
+                full_stack_trace TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -57,6 +67,8 @@ class DatabaseSetup:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_filename ON logs(filename)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_component ON logs(component)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_module ON logs(module)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_has_stack_trace ON logs(has_stack_trace)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_exception_type ON logs(exception_type)')
         
         self.sqlite_conn.commit()
         print("SQLite database setup completed!")
@@ -128,8 +140,9 @@ class DatabaseSetup:
         
         for entry in log_entries:
             cursor.execute('''
-                INSERT INTO logs (timestamp, filename, line_number, severity, message, log_file_source, component, module)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO logs (timestamp, filename, line_number, severity, message, log_file_source, 
+                                component, module, has_stack_trace, exception_type, exception_language, full_stack_trace)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 entry['timestamp'],
                 entry['filename'],
@@ -138,14 +151,18 @@ class DatabaseSetup:
                 entry['message'],
                 entry['log_file_source'],
                 entry['component'],
-                entry['module']
+                entry['module'],
+                entry.get('has_stack_trace', 0),
+                entry.get('exception_type'),
+                entry.get('exception_language'),
+                entry.get('full_stack_trace')
             ))
         
         self.sqlite_conn.commit()
         print(f"Inserted {len(log_entries)} entries into SQLite database")
     
     def insert_logs_to_chromadb(self, log_entries):
-        """Insert log entries into ChromaDB with embeddings"""
+        """Insert log entries into ChromaDB with embeddings (includes full stack trace context)"""
         if not log_entries:
             return
         
@@ -156,7 +173,12 @@ class DatabaseSetup:
         
         for i, entry in enumerate(log_entries):
             # Create a comprehensive text for embedding
-            document_text = f"{entry['severity']} in {entry['filename']}: {entry['message']}"
+            # Include full stack trace in the document for better semantic search
+            if entry.get('has_stack_trace') and entry.get('full_stack_trace'):
+                document_text = f"{entry['severity']} in {entry['filename']}: {entry['message']}\n\nStack Trace:\n{entry['full_stack_trace']}"
+            else:
+                document_text = f"{entry['severity']} in {entry['filename']}: {entry['message']}"
+            
             documents.append(document_text)
             
             # Metadata for filtering and context
@@ -167,7 +189,9 @@ class DatabaseSetup:
                 'severity': entry['severity'],
                 'log_file_source': entry['log_file_source'],
                 'component': entry['component'],
-                'module': entry['module']
+                'module': entry['module'],
+                'has_stack_trace': entry.get('has_stack_trace', 0),
+                'exception_type': entry.get('exception_type', '')
             }
             metadatas.append(metadata)
             
@@ -189,7 +213,7 @@ class DatabaseSetup:
         print(f"Inserted {len(log_entries)} entries into ChromaDB")
     
     def process_log_file(self, log_file_path):
-        """Process a single log file and extract entries"""
+        """Process a single log file and extract entries including multi-line stack traces"""
         print(f"Processing log file: {log_file_path}")
         
         if not os.path.exists(log_file_path):
@@ -200,15 +224,87 @@ class DatabaseSetup:
         source_file = os.path.basename(log_file_path)
         
         with open(log_file_path, 'r', encoding='utf-8') as f:
-            for line_num, line in enumerate(f, 1):
-                entry = self.parse_log_entry(line, source_file)
-                if entry:
-                    log_entries.append(entry)
+            lines = f.readlines()
+        
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            entry = self.parse_log_entry(line, source_file)
+            
+            if entry:
+                # Check if next lines contain a stack trace
+                stack_trace_lines = []
+                j = i + 1
+                
+                # Look ahead for stack trace patterns
+                while j < len(lines):
+                    next_line = lines[j].strip()
+                    
+                    # Check if this is a stack trace line
+                    if self._is_stack_trace_line(next_line):
+                        stack_trace_lines.append(lines[j].rstrip())
+                        j += 1
+                    # Check if this is a new log entry (starts with timestamp)
+                    elif re.match(r'^\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}', next_line):
+                        break
+                    # Empty line might be end of stack trace
+                    elif not next_line:
+                        j += 1
+                        break
+                    else:
+                        # Could be part of stack trace
+                        stack_trace_lines.append(lines[j].rstrip())
+                        j += 1
+                
+                # If we found stack trace lines, parse them
+                if stack_trace_lines:
+                    full_stack_trace = '\n'.join(stack_trace_lines)
+                    exception_info = self.exception_parser.parse_exception(full_stack_trace)
+                    
+                    if exception_info:
+                        entry['has_stack_trace'] = 1
+                        entry['exception_type'] = exception_info.exception_type
+                        entry['exception_language'] = exception_info.language
+                        entry['full_stack_trace'] = exception_info.full_stack_trace
+                        # Update message to show summary instead of full trace
+                        entry['message'] = exception_info.summary
+                    else:
+                        # Store raw stack trace if parser couldn't identify it
+                        entry['has_stack_trace'] = 1
+                        entry['full_stack_trace'] = full_stack_trace
+                    
+                    i = j  # Skip the stack trace lines
                 else:
-                    print(f"Warning: Could not parse line {line_num} in {log_file_path}: {line.strip()}")
+                    i += 1
+                
+                log_entries.append(entry)
+            else:
+                i += 1
         
         print(f"Successfully parsed {len(log_entries)} entries from {log_file_path}")
         return log_entries
+    
+    def _is_stack_trace_line(self, line: str) -> bool:
+        """Check if a line is part of a stack trace"""
+        if not line:
+            return False
+        
+        stack_trace_patterns = [
+            r'^\s*at\s+',  # Java/JavaScript/C# style
+            r'^\s*File\s+"',  # Python style
+            r'^Caused by:',  # Java caused by
+            r'^Traceback',  # Python traceback
+            r'^\s+\^',  # Python error pointer
+            r'^[a-zA-Z0-9_.]+Exception:',  # Exception line
+            r'^[a-zA-Z0-9_.]+Error:',  # Error line
+            r'^panic:',  # Go panic
+        ]
+        
+        for pattern in stack_trace_patterns:
+            if re.match(pattern, line):
+                return True
+        
+        return False
     
     def load_all_logs(self):
         """Load all log files from the logs directory"""

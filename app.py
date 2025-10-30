@@ -365,11 +365,13 @@ class LogAnalysisApp:
             # Add user message to chat history immediately
             st.session_state.chat_history.append({"role": "user", "content": user_input})
             
-            # Analyze query intent
-            query_intent = analyze_query_intent(user_input)
+            # Show analyzing indicator
+            with st.spinner("🔍 Analyzing your query..."):
+                # Analyze query intent
+                query_intent = analyze_query_intent(user_input)
 
-            # Process query with streaming response
-            self.process_streaming_query(user_input, llm, query_intent)
+                # Process query with streaming response
+                self.process_streaming_query(user_input, llm, query_intent)
 
             # Show contextual visuals based on query intent
             # Note: Contextual visuals will be shown after streaming completes
@@ -723,23 +725,27 @@ class LogAnalysisApp:
                     # Stream the response
                     for chunk in result['response']:
                         full_response += chunk
-                        message_placeholder.markdown(full_response + "▌")
+                        # Format follow-up questions with header
+                        formatted_response = self._format_response_with_followup_header(full_response)
+                        message_placeholder.markdown(formatted_response + "▌")
                         time.sleep(0.02)  # Small delay for visual effect
                     
                     # Final response without cursor
-                    message_placeholder.markdown(full_response)
+                    formatted_response = self._format_response_with_followup_header(full_response)
+                    message_placeholder.markdown(formatted_response)
                     
                     # Add to chat history
                     st.session_state.chat_history.append({
                         "role": "assistant", 
-                        "content": full_response
+                        "content": formatted_response
                     })
             else:
                 # Fallback to non-streaming
                 response = result.get('response', '')
+                formatted_response = self._format_response_with_followup_header(response)
                 st.session_state.chat_history.append({
                     "role": "assistant", 
-                    "content": response
+                    "content": formatted_response
                 })
                 
         except Exception as e:
@@ -748,6 +754,33 @@ class LogAnalysisApp:
                 "role": "assistant", 
                 "content": error_msg
             })
+    
+    def _format_response_with_followup_header(self, response):
+        """Add header before follow-up questions if they exist"""
+        # Check if header already exists (avoid duplicates)
+        if "💡 Follow-up Questions" in response or "Follow-up Questions" in response:
+            return response
+        
+        # Check if response contains follow-up questions (look for numbered questions at the end)
+        if "❓" in response or ("1." in response and "2." in response):
+            # Find where follow-up questions start
+            # Look for patterns like "1. " followed by text ending with "?"
+            lines = response.split('\n')
+            followup_start_idx = -1
+            
+            for i, line in enumerate(lines):
+                # Check if this line starts a numbered question section
+                if re.match(r'^\s*1\.\s+.+\?\s*$', line) or re.match(r'^\s*❓\s*1\.', line):
+                    followup_start_idx = i
+                    break
+            
+            if followup_start_idx > 0:
+                # Insert header before follow-up questions
+                before_followup = '\n'.join(lines[:followup_start_idx])
+                followup_section = '\n'.join(lines[followup_start_idx:])
+                return f"{before_followup}\n\n### 💡 Follow-up Questions\n{followup_section}"
+        
+        return response
     
     def process_query_with_context(self, user_input, llm, query_intent):
         """Process user query with network assurance context and conversation history (non-streaming fallback)"""

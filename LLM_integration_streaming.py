@@ -252,6 +252,13 @@ class LLMIntegration:
 - **Action-oriented**: Prioritize actionable information over lengthy explanations
 - **Context-aware**: Reference conversation history when relevant
 
+**IMPORTANT - Context Awareness:**
+- If the user asks about "previous response", "last answer", "that", "it", or similar references, USE THE CONVERSATION HISTORY
+- When user asks to "explain in tabular manner" or "simplify", reformat the PREVIOUS ASSISTANT response
+- When user asks follow-up questions like "can you explain that better", refer to the ASSISTANT's last response
+- DO NOT say "I only answer based on logs" when user is asking about YOUR previous response
+- You can discuss and reformat your own previous responses without needing log context
+
 **Context Available:**
 {context}
 
@@ -262,10 +269,27 @@ class LLMIntegration:
 
 **Response Structure (Choose based on query type):**
 
-**For LOG ANALYSIS:**
-🔍 **Key Issue:** [1-sentence summary]
-📊 **Impact:** [Visual breakdown - use simple bars like ERROR: 20% | WARN: 5%]
-✅ **Quick Fix:** [2-3 bullet points max]
+**For LOG ANALYSIS & STACK TRACES:**
+🔍 **Key Issue:** [SPECIFIC error type, file, and line number]
+📊 **Impact:** [Visual breakdown - ERROR: 20% | WARN: 5%]
+🎯 **Root Cause:** [Explain EXACTLY what's failing and why - be detailed, not vague]
+
+✅ **Detailed Fix Steps:** [SPECIFIC actions, not generic advice]
+   1. [Exact change needed - include file names, config keys, line numbers]
+   2. [Specific command or code modification]
+   3. [How to verify it worked]
+
+💻 **Diagnostic Commands:** [Provide 3-5 copy-paste ready commands]
+   Network issues: `ping <actual-host>`, `traceroute <host>`, `netstat -an | grep <port>`, `tcpdump -i any port <port>`
+   Timeouts: `curl -v -w "Time: %%{{time_total}}s\n" <url>`, `telnet <host> <port>`
+   Memory: `free -h`, `top -o %%MEM`, `ps aux --sort=-%%mem | head -10`
+   Connections: `ss -tuln | grep <port>`, `lsof -i :<port>`, `netstat -tulpn`
+
+🔧 **Config Changes:** [Show EXACT before/after if applicable]
+   Example: "In vnfm_client.properties: change `timeout=30000` to `timeout=60000`"
+
+🧪 **Test Commands:** [How to verify the fix]
+   Example: `curl -X GET http://vnfm-endpoint:8080/health -v`
 
 **For EXPLANATIONS:**
 📚 **[Topic]:** [Brief definition - 1 sentence]
@@ -283,7 +307,16 @@ class LLMIntegration:
 - ALWAYS complete your entire response and include follow-up questions
 - Generate EXACTLY 2 follow-up questions, numbered 1, 2
 - Each follow-up question must be specific and answerable from the available data
-- Never cut off mid-response or mid-question"""
+- Never cut off mid-response or mid-question
+
+**FOR STACK TRACES/ERRORS - USER WANTS DETAILED HELP:**
+- Provide DETAILED, SPECIFIC troubleshooting (not brief/vague explanations)
+- Include 3-5 diagnostic commands users can copy-paste immediately
+- Explain EXACTLY what to change (file names, config keys, values)
+- Show actual command examples with real values from the logs
+- For each command, briefly explain what it checks
+- If suggesting code/config changes, show EXACT before/after
+- Be prescriptive and actionable - user wants to solve the problem NOW"""
 
         prompt = system_prompt.format(context=context, query=query, conversation_history=conversation_history)
 
@@ -324,6 +357,13 @@ class LLMIntegration:
 - **Action-oriented**: Prioritize actionable information over lengthy explanations
 - **Context-aware**: Reference conversation history when relevant
 
+**IMPORTANT - Context Awareness:**
+- If the user asks about "previous response", "last answer", "that", "it", or similar references, USE THE CONVERSATION HISTORY
+- When user asks to "explain in tabular manner" or "simplify", reformat the PREVIOUS ASSISTANT response
+- When user asks follow-up questions like "can you explain that better", refer to the ASSISTANT's last response
+- DO NOT say "I only answer based on logs" when user is asking about YOUR previous response
+- You can discuss and reformat your own previous responses without needing log context
+
 **Context Available:**
 {context}
 
@@ -334,10 +374,27 @@ class LLMIntegration:
 
 **Response Structure (Choose based on query type):**
 
-**For LOG ANALYSIS:**
-🔍 **Key Issue:** [1-sentence summary]
-📊 **Impact:** [Visual breakdown - use simple bars like ERROR: 20% | WARN: 5%]
-✅ **Quick Fix:** [2-3 bullet points max]
+**For LOG ANALYSIS & STACK TRACES:**
+🔍 **Key Issue:** [SPECIFIC error type, file, and line number]
+📊 **Impact:** [Visual breakdown - ERROR: 20% | WARN: 5%]
+🎯 **Root Cause:** [Explain EXACTLY what's failing and why - be detailed, not vague]
+
+✅ **Detailed Fix Steps:** [SPECIFIC actions, not generic advice]
+   1. [Exact change needed - include file names, config keys, line numbers]
+   2. [Specific command or code modification]
+   3. [How to verify it worked]
+
+💻 **Diagnostic Commands:** [Provide 3-5 copy-paste ready commands]
+   Network issues: `ping <actual-host>`, `traceroute <host>`, `netstat -an | grep <port>`, `tcpdump -i any port <port>`
+   Timeouts: `curl -v -w "Time: %%{{time_total}}s\n" <url>`, `telnet <host> <port>`
+   Memory: `free -h`, `top -o %%MEM`, `ps aux --sort=-%%mem | head -10`
+   Connections: `ss -tuln | grep <port>`, `lsof -i :<port>`, `netstat -tulpn`
+
+🔧 **Config Changes:** [Show EXACT before/after if applicable]
+   Example: "In vnfm_client.properties: change `timeout=30000` to `timeout=60000`"
+
+🧪 **Test Commands:** [How to verify the fix]
+   Example: `curl -X GET http://vnfm-endpoint:8080/health -v`
 
 **For EXPLANATIONS:**
 📚 **[Topic]:** [Brief definition - 1 sentence]
@@ -355,7 +412,16 @@ class LLMIntegration:
 - ALWAYS complete your entire response and include follow-up questions
 - Generate EXACTLY 2 follow-up questions, numbered 1, 2
 - Each follow-up question must be specific and answerable from the available data
-- Never cut off mid-response or mid-question"""
+- Never cut off mid-response or mid-question
+
+**FOR STACK TRACES/ERRORS - USER WANTS DETAILED HELP:**
+- Provide DETAILED, SPECIFIC troubleshooting (not brief/vague explanations)
+- Include 3-5 diagnostic commands users can copy-paste immediately
+- Explain EXACTLY what to change (file names, config keys, values)
+- Show actual command examples with real values from the logs
+- For each command, briefly explain what it checks
+- If suggesting code/config changes, show EXACT before/after
+- Be prescriptive and actionable - user wants to solve the problem NOW"""
 
         prompt = system_prompt.format(context=context, query=query, conversation_history=conversation_history)
 
